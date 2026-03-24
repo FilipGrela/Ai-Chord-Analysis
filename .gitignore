@@ -1,4 +1,6 @@
 output/
+out/
+isophonics_dataset/
 
 # Virtual Environment
 venv/

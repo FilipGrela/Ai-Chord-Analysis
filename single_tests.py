@@ -1,5 +1,5 @@
-from spectograms import generate_spectrogram, create_chromagram, read_audio_universal
-from plot import plot_cqt, save_cqt_image, plot_chromagram
+from spectograms.spectograms import generate_spectrogram, create_chromagram, read_audio_universal
+from spectograms.plot import plot_cqt, save_cqt_image, plot_chromagram
 
 import itertools
 import os
@@ -44,13 +44,14 @@ def generate_single_spectrogram(audio_data, sample_rate):
     # Everything quieted down unver the threshold
     chroma = create_chromagram(spectrogram, threshold_percent=10)
 
-    plot_chromagram(chroma)
+    # plot_chromagram(chroma)
+    
     plot_cqt(spectrogram, custom_text=f"Applied Smoothing: {apply_smoothing},Short noises removed: {apply_short_noises}, Whitening: {apply_whitening}, Denoise: {apply_denoise}")
 
 
 
 def main():
-    file_path = 'spectograms\\samples\\Beethoven - Moonlight Sonata (FULL)(1).mp3'   
+    file_path = 'D:\\isophonics_dataset\\isophonics_0\\isophonics_0.mp3'   
     audio_data, sample_rate = read_audio_universal(file_path)
 
     if audio_data is None:
