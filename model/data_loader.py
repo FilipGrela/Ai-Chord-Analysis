@@ -50,6 +50,8 @@ def create_dataloaders_from_folder(folder_path, batch_size=64):
     if len(x_files) != len(y_files) or len(x_files) == 0:
         raise ValueError("Błąd: Brak plików w folderze lub liczba plików X i y się nie zgadza!")
 
+    print(f"Znaleziono {len(x_files)} par plików (X, y) w folderze '{folder_path}'.")
+
     # 2. Dzielimy PLIKI (utwory), a nie ramki! 
     # 80% piosenek do nauki, 20% do sprawdzania
     x_train_files, x_temp, y_train_files, y_temp = train_test_split(

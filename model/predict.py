@@ -10,6 +10,9 @@ sys.path.append(parent_dir)
 from spectograms.spectograms import read_audio_universal, generate_spectrogram
 from model import ChordCRNN
 
+
+os.environ["CUDA_MODULE_LOADING"] = "LAZY"  
+
 # Słownik do tłumaczenia cyfr z powrotem na format tekstowy
 NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 VOCAB = NOTES + [n + 'm' for n in NOTES] + ['N']
@@ -19,7 +22,17 @@ def predict_chords(audio_path, model_path, hop_size_ms=50, seq_len=40):
     print(f"Analiza pliku: {os.path.basename(audio_path)}")
     
 
-    device = torch.device("cpu")
+    if torch.cuda.is_available():
+        torch.cuda.set_device(0)
+        device = torch.device("cuda:0")
+
+    else:
+        device = torch.device("cpu")
+
+    props = torch.cuda.get_device_properties(device)
+    print(f"Urządzenie: {props.name}")
+    print(f"Architektura (Capability): {props.major}.{props.minor}")
+    
     model = ChordCRNN(num_classes=25)
     
     try:
@@ -101,5 +114,6 @@ if __name__ == "__main__":
     MODEL_FILE = "best_crnn_model.pth"
     # Ścieżka do docelowego pliku audio
     TEST_SONG = r"D:\SI_Studia\Ai-Chord-Analysis\spectograms\samples\Dużo Ciebie mi (Live Akustycznie).wav"
+    TEST_SONG = r"D:\SI_Studia\Ai-Chord-Analysis\spectograms\samples\Shawn Mendes - Treat You Better.mp3"
     
     predict_chords(TEST_SONG, MODEL_FILE)
