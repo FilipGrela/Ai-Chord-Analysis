@@ -122,7 +122,7 @@ def build_entire_dataset(dataset_root, output_dir, hop_size_ms=50, seq_len=40):
             cqt_matrix = generate_spectrogram(
                 audio_data, 
                 sample_rate, 
-                method='cqt_fast', 
+                method='cqt', 
                 hop_size_ms=hop_size_ms,
                 apply_smoothing=True, 
                 apply_whitening=False, 

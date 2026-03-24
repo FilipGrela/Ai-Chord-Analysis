@@ -1,36 +1,45 @@
 # AI Chord Analysis
 
-Projekt do analizy akordów z plików audio: generowanie spektrogramów CQT, parsowanie etykiet akordów, synchronizacja ramek z etykietami i budowa datasetu sekwencji do trenowania modeli (np. CRNN).
+Projekt do rozpoznawania akordów z audio na podstawie spektrogramu CQT i modelu CRNN.
 
-## 1. Co robi projekt
+Repozytorium obejmuje cały pipeline:
 
-Pipeline projektu:
+1. przygotowanie danych (audio + etykiety),
+2. budowę datasetu treningowego (`.npy`),
+3. trening modelu,
+4. predykcję akordów dla nowej piosenki.
 
-1. Wczytanie audio (`.mp3`/`.wav`) przez `ffmpeg`.
-2. Obliczenie spektrogramu (domyślnie CQT).
-3. Opcjonalne przetwarzanie: odszumianie, usuwanie krótkich szumów, whitening, smoothing.
-4. Parsowanie etykiet akordów (`.jams`, `.csv`, `.txt`) i uproszczenie do słownika:
-	 - 12 akordów durowych,
-	 - 12 akordów molowych,
-	 - `N` (brak akordu).
-5. Wyrównanie ramek czasowych do etykiet.
-6. Cięcie na sekwencje treningowe i zapis do plików `.npy`.
+---
 
-## 2. Wymagania systemowe
+## 1. Wymagania
+
+### System
 
 - Python 3.10+ (zalecane 3.10 lub 3.11)
-- `ffmpeg` dostępny w systemowym `PATH`
-- System: Windows/Linux/macOS
+- FFmpeg dostępny w systemowym `PATH`
+- Windows / Linux / macOS
 
-## 3. Instalacja krok po kroku
+### Biblioteki Python (z `requirements.txt`)
 
-### 3.1. Wejście do katalogu projektu
+- `numpy` - obliczenia numeryczne i macierze
+- `matplotlib` - wizualizacje CQT/chroma
+- `tqdm` - paski postępu
+- `torch` - model CRNN i trening
+- `torchvision`, `torchaudio` - zależności ekosystemu PyTorch
+- `scikit-learn` - podział danych train/val/test
+- `librosa` - wsparcie audio (przydatne narzędzia DSP)
+
+---
+
+## 2. Instalacja krok po kroku
+
+### 2.1. Wejście do katalogu projektu
 
 ```powershell
-cd D:\SI_Studia\Ai-Chord-Analysis
+cd ../Ai-Chord-Analysis
 ```
 
-### 3.2. Utworzenie i aktywacja środowiska wirtualnego
+### 2.2. Utworzenie środowiska virtualenv
 
 Windows (PowerShell):
 
@@ -39,226 +48,277 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
 
-Linux/macOS (bash/zsh):
+Linux/macOS:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-### 3.3. Instalacja bibliotek Pythona
+### 2.3. Instalacja pakietów
 
 ```bash
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 3.4. Instalacja `ffmpeg`
-
-`ffmpeg` jest wymagany do działania funkcji `read_audio_universal`.
-
-Sprawdzenie instalacji:
+### 2.4. Sprawdzenie FFmpeg
 
 ```bash
 ffmpeg -version
 ```
 
-Jeśli komenda nie działa, doinstaluj `ffmpeg` i dodaj go do `PATH`.
+Jeśli komenda nie działa, doinstaluj FFmpeg i dodaj jego folder `bin` do `PATH`.
 
-## 4. Opis pakietów (requirements.txt)
+---
 
-### `numpy`
-- Operacje numeryczne na macierzach i wektorach.
-- Używany m.in. przy obliczeniach CQT, normalizacji i budowie sekwencji.
+## 3. Jak przygotować dane Isophonics
 
-### `matplotlib`
-- Wizualizacja spektrogramów/chromagramów.
-- Używany przez moduł `spectograms/plot.py` do podglądu i zapisu obrazów.
+### 3.1. Struktura folderów
 
-### `tqdm`
-- Paski postępu dla dłuższych pętli (analiza ramek, whitening, smoothing).
-
-### `torch`
-- Framework deep learning (PyTorch).
-- W aktualnym kodzie dataset builder nie trenuje modelu, ale pakiet jest przygotowany pod kolejne etapy trenowania.
-
-### `scikit-learn`
-- Narzędzia ML i preprocessing.
-- W aktualnym kodzie nie jest centralny dla pipeline’u ekstrakcji, ale przydatny do podziału danych i ewaluacji.
-
-## 5. Struktura kluczowych plików
-
-- `main.py`:
-	- Przetwarzanie pojedynczego utworu.
-	- Tworzy CQT, etykiety ramek, sekwencje i zapisuje `.npy`.
-
-- `dataset_builder.py`:
-	- Przetwarzanie całego katalogu datasetu (wiele utworów).
-	- Dla każdego podfolderu zapisuje osobne pliki `{nazwa}_X.npy` i `{nazwa}_y.npy`.
-
-- `labels_parser.py`:
-	- Parser etykiet (`.jams`, `.csv`, `.txt`).
-	- Upraszcza akordy do słownika klasyfikacji.
-
-- `spectograms/spectograms.py`:
-	- Odczyt audio przez `ffmpeg`.
-	- Obliczanie CQT/RFFT i kroki przetwarzania sygnału.
-
-- `spectograms/plot.py`:
-	- Rysowanie i zapis obrazów spektrogramu/chromagramu.
-
-- `single_tests.py`:
-	- Testy manualne i szybki podgląd wpływu parametrów.
-
-## 6. Format wejścia danych
-
-Przykładowy układ dla jednego utworu:
-
-```text
-isophonics_X/
-	isophonics_X.mp3   (lub .wav)
-	isophonics_X.jams  (lub labels.csv/.txt)
-```
-
-Dla pełnego datasetu:
+Każdy utwór powinien być w osobnym folderze:
 
 ```text
 isophonics_dataset/
 	isophonics_0/
-		isophonics_0.mp3
-		isophonics_0.jams
+		isophonics_0.mp3   (lub .wav)
+		isophonics_0.jams  (lub .csv/.txt)
 	isophonics_1/
-		...
+		isophonics_1.mp3
+		isophonics_1.jams
+	...
 ```
 
-## 7. Przykłady użycia
+Wymagania minimalne na podfolder:
 
-### 7.1. Przetworzenie jednego utworu
+- dokładnie co najmniej 1 plik audio (`.mp3` lub `.wav`),
+- co najmniej 1 plik etykiet (`.jams`; parser obsługuje też `.csv` i `.txt`).
 
-Uruchomienie:
+Skrypt `dataset_builder.py` skanuje wszystkie podfoldery i pomija te, w których brakuje audio lub etykiet.
+
+### 3.2. Obsługiwane formaty etykiet
+
+- `.jams` - preferowany (namespace `chord`)
+- `.csv` / `.txt` - format wiersza: `start_time, end_time, chord_label`
+
+Przykład CSV/TXT:
+
+```text
+0.00,1.25,C:maj
+1.25,2.80,G:maj
+2.80,4.10,A:min
+4.10,5.00,N
+```
+
+---
+
+## 4. Co robi parser etykiet (`labels_parser.py`)
+
+Parser:
+
+1. rozpoznaje format (`.jams`, `.csv`, `.txt`),
+2. czyta przedziały czasu akordów,
+3. upraszcza nazwy akordów do wspólnego słownika 25 klas:
+	 - 12 durowych,
+	 - 12 molowych,
+	 - `N` (brak akordu).
+
+Reguły upraszczania:
+
+- enharmonie są normalizowane (np. `Db -> C#`, `Bb -> A#`),
+- inwersje są usuwane (`C:maj/5 -> C:maj`),
+- jakości typu `maj7`, `sus`, `aug` traktowane są jako major,
+- `min`/`m`/`dim` mapowane są do minor,
+- `N`, `X`, `Z`, puste wartości -> `N`.
+
+---
+
+## 5. Przygotowanie datasetu
+
+### 5.1. Przetworzenie jednego utworu (test pipeline)
+
+Uruchom:
 
 ```bash
 python main.py
 ```
 
-Domyślnie skrypt używa:
+Domyślne wejście:
 
-- audio: `single_test_data/isophonics_0/isophonics_0.mp3`
-- etykiety: `single_test_data/isophonics_0/isophonics_0.jams`
-- output: `out/dataset_output`
+- `single_test_data/isophonics_0/isophonics_0.mp3`
+- `single_test_data/isophonics_0/isophonics_0.jams`
 
-Wynik:
+Wyjście:
 
 - `out/dataset_output/isophonics_0_X.npy`
 - `out/dataset_output/isophonics_0_y.npy`
 - `out/dataset_output/isophonics_0_cqt_check.png`
 
-### 7.2. Budowa całego datasetu
+### 5.2. Budowa pełnego datasetu
 
-Uruchomienie:
+Uruchom:
 
 ```bash
 python dataset_builder.py
 ```
 
-Domyślnie:
+Domyślne ścieżki:
 
-- wejście: `isophonics_dataset`
-- wyjście: `out/full_dataset`
-- parametry: `hop_size_ms=50`, `seq_len=40`
+- wejście: `isophonics_dataset/`
+- wyjście: `out/full_dataset/`
 
-Dla każdego utworu powstaną pliki:
+Dla każdego utworu powstaną:
 
-- `out/full_dataset/<folder>_X.npy`
-- `out/full_dataset/<folder>_y.npy`
+- `<song_folder>_X.npy`
+- `<song_folder>_y.npy`
 
-### 7.3. Szybki test wizualny spektrogramu
+### 5.3. Parametry ważne dla datasetu
 
-Uruchomienie:
+- `hop_size_ms=50` - krok czasowy ramek CQT (~20 fps)
+- `seq_len=40` - długość okna modelu (~2.0 s)
+- `hop_seq=10` - przesuw okna przy tworzeniu sekwencji
+
+---
+
+## 6. Pojedynczy test spektrogramu (`single_tests.py`)
+
+Uruchom:
 
 ```bash
 python single_tests.py
 ```
 
-Uwaga: w `single_tests.py` jest aktualnie hardcodowana ścieżka `D:\isophonics_dataset\...`.
-Jeśli dane są gdzie indziej, zmień `file_path` przed uruchomieniem.
+Do czego służy:
 
-## 8. Opis najważniejszych parametrów
+- szybki podgląd CQT/chromagramu,
+- porównanie wpływu filtrów (`smoothing`, `whitening`, `denoise`),
+- ręczna weryfikacja jakości cech przed treningiem.
 
-- `hop_size_ms` (np. `50`):
-	- Krok czasowy między ramkami CQT.
-	- `50 ms` oznacza około `20` ramek/s.
+Uwaga: w pliku jest hardcodowana ścieżka audio (`file_path`).
+Przed uruchomieniem ustaw ją na lokalizację Twojego pliku.
 
-- `seq_len` (np. `40`):
-	- Długość sekwencji wejściowej dla modelu.
-	- `40` ramek przy `50 ms` to około `2 s` kontekstu.
+---
 
-- `hop_seq` (w `create_sequences`, domyślnie `10`):
-	- O ile ramek przesuwane jest okno sekwencji.
-	- Mniejsza wartość = większe nakładanie okien = więcej przykładów.
+## 7. Trening modelu (`model/train.py`)
 
-- `apply_denoise`, `apply_short_noises`, `apply_whitening`, `apply_smoothing`:
-	- Przełączniki kolejnych etapów obróbki sygnału.
+### 7.1. Co robi trening
 
-## 9. Format danych wyjściowych
+Skrypt:
 
-### `*_X.npy`
-- Typ: `numpy.ndarray`
-- Kształt: `(liczba_sekwencji, seq_len, liczba_cech)`
-- Dla CQT zwykle `liczba_cech = 84` (84 biny częstotliwości).
+1. wczytuje wszystkie pary `*_X.npy` i `*_y.npy`,
+2. dzieli dane na zbiory train/val (na poziomie plików-utworów),
+3. buduje model `ChordCRNN`,
+4. trenuje z `CrossEntropyLoss` i wagami klas,
+5. zapisuje najlepszy model do `best_crnn_model.pth`,
+6. stosuje `Early Stopping`.
 
-### `*_y.npy`
-- Typ: `numpy.ndarray`
-- Kształt: `(liczba_sekwencji,)`
-- Każda wartość to klasa akordu jako liczba całkowita.
-
-## 10. Mapowanie klas akordów
-
-Słownik etykiet zawiera:
-
-- durowe: `C, C#, D, ..., B`
-- molowe: `Cm, C#m, Dm, ..., Bm`
-- `N` (no chord)
-
-Mapowanie realizowane jest przez `CHORD_TO_INT` i `INT_TO_CHORD` w `dataset_builder.py`.
-
-## 11. Typowy workflow end-to-end
-
-1. Przygotuj dane audio + etykiety (`.jams`/`.csv`/`.txt`).
-2. Upewnij się, że działa `ffmpeg -version`.
-3. Zainstaluj zależności (`pip install -r requirements.txt`).
-4. Dla szybkiej walidacji uruchom `python main.py` na jednym utworze.
-5. Sprawdź wygenerowany obraz CQT (`*_cqt_check.png`).
-6. Uruchom `python dataset_builder.py` dla całego datasetu.
-7. Załaduj pliki `.npy` w kodzie treningowym modelu.
-
-## 12. Najczęstsze problemy i rozwiązania
-
-### Problem: `Nie znaleziono FFmpeg w systemie`
-- Przyczyna: brak `ffmpeg` w `PATH`.
-- Rozwiązanie: doinstaluj `ffmpeg` i dodaj katalog binarny do zmiennej środowiskowej `PATH`.
-
-### Problem: `Brakuje pliku audio lub etykiet`
-- Przyczyna: w podfolderze datasetu brakuje `.mp3/.wav` albo `.jams`.
-- Rozwiązanie: sprawdź strukturę folderu i nazwy plików.
-
-### Problem: puste/małe wyjście datasetu
-- Przyczyna: zbyt krótki utwór względem `seq_len`, błędy etykiet, lub agresywne filtrowanie.
-- Rozwiązanie:
-	- zmniejsz `seq_len`,
-	- sprawdź poprawność etykiet,
-	- przetestuj ustawienia `apply_*`.
-
-### Problem: parser nie rozpoznaje akordów
-- Przyczyna: nietypowy format etykiet.
-- Rozwiązanie: sprawdź funkcję `simplify_chord` w `labels_parser.py` i rozszerz reguły.
-
-## 13. Szybki start (skrót)
+### 7.2. Uruchomienie
 
 ```bash
-pip install -r requirements.txt
-python main.py
-python dataset_builder.py
+python model/train.py
 ```
 
-Po tych krokach otrzymasz gotowe pliki `.npy` do treningu i obrazy kontrolne CQT.
+Przed uruchomieniem sprawdź w `model/train.py` zmienną:
+
+- `DATASET_FOLDER` - ustaw na folder z wygenerowanymi plikami `*_X.npy` i `*_y.npy`.
+
+### 7.3. Wyjście treningu
+
+- plik wag: `best_crnn_model.pth`
+- logi epok: accuracy/loss walidacji i treningu
+
+---
+
+## 8. Analiza piosenki (predykcja) `model/predict.py`
+
+### 8.1. Co robi analiza
+
+1. ładuje wytrenowany model (`best_crnn_model.pth`),
+2. generuje CQT dla podanego pliku audio,
+3. tnie audio na przesuwne okna,
+4. przewiduje akord dla każdego okna,
+5. grupuje wyniki w czytelne bloki czasu:
+	 - `[start - end] : chord`.
+
+### 8.2. Uruchomienie
+
+```bash
+python model/predict.py
+```
+
+Przed uruchomieniem ustaw w pliku:
+
+- `MODEL_FILE` - ścieżka do wag modelu,
+- `TEST_SONG` - ścieżka do analizowanego audio (`.mp3`/`.wav`).
+
+---
+
+## 9. Opis formatu danych wyjściowych
+
+### `*_X.npy`
+
+- typ: `float32`
+- kształt: `(N, seq_len, 84)`
+- zawartość: sekwencje cech CQT
+
+### `*_y.npy`
+
+- typ: `int`
+- kształt: `(N,)`
+- zawartość: indeks klasy akordu
+
+Mapowanie klas:
+
+- `0..11` - akordy durowe,
+- `12..23` - akordy molowe,
+- `24` - `N`.
+
+---
+
+## 10. Najczęstsze problemy
+
+### 1) `Nie znaleziono FFmpeg w systemie`
+
+Rozwiązanie: zainstaluj FFmpeg i dodaj do `PATH`.
+
+### 2) Puste lub małe zbiory `.npy`
+
+Możliwe przyczyny:
+
+- utwór jest krótszy niż wymagane okno,
+- błędne etykiety czasowe,
+- za agresywne filtrowanie sygnału.
+
+### 3) Brak plików `*_X.npy` / `*_y.npy` przy treningu
+
+Rozwiązanie:
+
+- najpierw uruchom `python dataset_builder.py`,
+- upewnij się, że `DATASET_FOLDER` wskazuje poprawny katalog.
+
+### 4) Brak modelu przy predykcji
+
+Rozwiązanie:
+
+- najpierw uruchom `python model/train.py`,
+- upewnij się, że `MODEL_FILE` wskazuje na istniejący `best_crnn_model.pth`.
+
+---
+
+## 11. Szybki workflow (skrót)
+
+1. Skopiuj dane Isophonics do `isophonics_dataset/` według struktury z sekcji 3.
+2. Zainstaluj zależności i FFmpeg.
+3. Sprawdź pipeline na jednym utworze: `python main.py`.
+4. Zbuduj pełny dataset: `python dataset_builder.py`.
+5. Wytrenuj model: `python model/train.py`.
+6. Zrób analizę piosenki: `python model/predict.py`.
+
+---
+
+## 12. Dodatkowe pliki pomocnicze
+
+- `model/test_gpu.py` - szybki test wykrycia i obliczeń CUDA/GPU.
+- `spectograms/plot.py` - zapis i podgląd spektrogramów/chromagramu.
+
+
