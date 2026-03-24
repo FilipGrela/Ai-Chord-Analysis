@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
 
-from plot import plot_cqt, plot_spectrogram
+from plot import plot_cqt, save_cqt_image
 
 def read_audio_universal(file_path, target_sr=44100):
     command = [
@@ -38,7 +38,7 @@ def read_audio_universal(file_path, target_sr=44100):
 #            ENHANCEMENT PIPELINE
 # ==========================================
 
-def smooth_harmonics(spectrogram, kernel_size=3):
+def smooth_harmonics(spectrogram, kernel_size=15):
     """
     Smooth the spectrogram by averaging each bin with its neighbors.
     This can help reduce percussion sounds, noise and make harmonic patterns more visible.
@@ -53,19 +53,14 @@ def smooth_harmonics(spectrogram, kernel_size=3):
 
     return smoothed_cqt
 
-def denoise_normalize_audio(cqt_db):
-    dynamic_range = 40
-    
-    # 2. Szukamy najgłośniejszego punktu w całej piosence
+def denoise_normalize_audio(cqt_db, dynamic_range = 35):
+
     max_db = np.max(cqt_db)
-    
-    # 3. Wyznaczamy próg odcięcia (Noise Floor)
+
     threshold_db = max_db - dynamic_range
     
-    # 4. Spłaszczamy wszystko poniżej progu (zerowanie szumu)
     cqt_db[cqt_db < threshold_db] = threshold_db
     
-    # 5. Normalizacja (skalowanie do przedziału od 0.0 do 1.0)
     cqt_normalized = (cqt_db - threshold_db) / dynamic_range
     
     return cqt_normalized
@@ -74,6 +69,20 @@ def generate_hann_window(window_size):
     n = np.arange(window_size)
     window = 0.5 - 0.5 * np.cos(2 * np.pi * n / (window_size - 1))
     return window
+
+def spectral_whitening(spectrogram):
+    """
+    It balances energy between frequency ranges. It prevents low bass from dominating the highs.
+    """
+    whitened_cqt = np.zeros_like(spectrogram)
+    
+    for i in tqdm(range(spectrogram.shape[0]), desc="Spectral Whitening", leave=False):
+        row = spectrogram[i, :]
+        
+        row_median = np.median(row)
+        whitened_cqt[i, :] = row - row_median
+        
+    return whitened_cqt
 
 # ==========================================
 #                CORE MATH
@@ -163,7 +172,8 @@ def calculate_spectogram_rfft(audio_data, sample_rate, window_size=100, hop_size
 #                 PIPELINE
 # ==========================================
 
-def generate_spectrogram(audio_data, sample_rate, method='cqt', apply_smoothing=True, apply_denoise=True, **kwargs):
+def generate_spectrogram(audio_data, sample_rate, method='cqt', 
+                         apply_smoothing=True, apply_whitening=True, apply_denoise=True, **kwargs):
 
     if method == 'cqt':
         spectrogram = calculate_spectogram_cqt(audio_data, sample_rate, **kwargs)
@@ -173,22 +183,12 @@ def generate_spectrogram(audio_data, sample_rate, method='cqt', apply_smoothing=
         raise ValueError(f"Nieznana metoda spektrogramu: {method}. Dostępne opcje: 'cqt', 'rfft'.")
     
     if apply_smoothing:
-        spectrogram = smooth_harmonics(spectrogram, kernel_size=5)
-        
+        spectrogram = smooth_harmonics(spectrogram)
+
+    if apply_whitening:
+        spectrogram = spectral_whitening(spectrogram)
+
     if apply_denoise:
         spectrogram = denoise_normalize_audio(spectrogram)
         
     return spectrogram
-
-
-def main():
-    file_path = 'spectograms\\samples\\Dużo Ciebie mi (Live Akustycznie).wav'   
-    audio_data, sample_rate = read_audio_universal(file_path)
-
-    if audio_data is not None:
-        spectrogram = generate_spectrogram(audio_data, sample_rate, method='cqt', apply_smoothing=True, apply_denoise=True)
-        plot_cqt(spectrogram)
-
-
-if __name__ == "__main__":
-    main()
