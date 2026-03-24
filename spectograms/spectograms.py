@@ -84,6 +84,24 @@ def spectral_whitening(spectrogram):
         
     return whitened_cqt
 
+def remove_short_noises(chroma_matrix, min_duration_frames=3):
+    """
+    Removes short-lived energy bursts (percussion/noise) from the chromagram.
+    min_duration_frames: sounds shorter than number of frames will be zeroed.
+    """
+    cleaned_chroma = np.copy(chroma_matrix)
+
+    for i in range(12):
+        row = cleaned_chroma[i, :]
+        
+
+        for f in range(1, len(row) - 1):
+            # If the current frame is active but neighbors are silent, kill it.
+            if row[f] > 0 and row[f-1] == 0 and row[f+1] == 0:
+                cleaned_chroma[i, f] = 0
+                
+    return cleaned_chroma
+
 # ==========================================
 #                CORE MATH
 # ==========================================
@@ -168,27 +186,66 @@ def calculate_spectogram_rfft(audio_data, sample_rate, window_size=100, hop_size
     return np.array(spectrogram).T
 
 
+def create_chromagram(cqt_matrix, threshold_percent=25):
+    """
+    Enhanced Chromagram with non-linear scaling to reduce noise.
+    """
+    num_bins, num_frames = cqt_matrix.shape
+    chroma = np.zeros((12, num_frames))
+    
+    # Non-linear scaling  to enhance strong harmonics and suppress noise
+    cqt_enhanced = np.power(cqt_matrix, 3) 
+
+    for i in range(num_bins):
+        pitch_class = i % 12
+        chroma[pitch_class, :] += cqt_enhanced[i, :]
+        
+    # Dynamic Range Clipping & Normalization per frame
+    for f in range(num_frames):
+        col = chroma[:, f]
+        col_max = np.max(col)
+        
+        if col_max > 0:
+            # Re-normalize to 0.0 - 1.0 range
+            col /= col_max
+            
+            # 4. Final Thresholding (Optional: zeros out everything below 20% of max)
+            col[col < threshold_percent / 100.0] = 0
+            
+            # Re-normalize again after thresholding
+            final_max = np.max(col)
+            if final_max > 0:
+                col /= final_max
+        
+        chroma[:, f] = col
+            
+    return chroma
+
 # ==========================================
 #                 PIPELINE
 # ==========================================
 
 def generate_spectrogram(audio_data, sample_rate, method='cqt', 
-                         apply_smoothing=True, apply_whitening=True, apply_denoise=True, **kwargs):
+                         apply_denoise=True, apply_short_noises=True, apply_whitening=True, apply_smoothing=True, **kwargs):
 
     if method == 'cqt':
-        spectrogram = calculate_spectogram_cqt(audio_data, sample_rate, **kwargs)
+        spectrogram = calculate_spectogram_cqt(audio_data, sample_rate,n_bins=84, **kwargs)
     elif method == 'rfft':
         spectrogram = calculate_spectogram_rfft(audio_data, sample_rate, **kwargs)
     else:
         raise ValueError(f"Nieznana metoda spektrogramu: {method}. Dostępne opcje: 'cqt', 'rfft'.")
     
+
+    
+    if apply_denoise:
+        spectrogram = denoise_normalize_audio(spectrogram)
+    if apply_short_noises:
+        spectrogram = remove_short_noises(spectrogram)
+    if apply_whitening:
+        spectrogram = spectral_whitening(spectrogram)
     if apply_smoothing:
         spectrogram = smooth_harmonics(spectrogram)
 
-    if apply_whitening:
-        spectrogram = spectral_whitening(spectrogram)
 
-    if apply_denoise:
-        spectrogram = denoise_normalize_audio(spectrogram)
         
     return spectrogram

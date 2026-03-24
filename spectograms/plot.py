@@ -6,6 +6,22 @@ import os
 
 NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 
+def plot_chromagram(chroma_matrix, hop_size_ms=50):
+    num_frames = chroma_matrix.shape[1]
+    total_time_sec = num_frames * (hop_size_ms / 1000.0)
+    
+    plt.figure(figsize=(14, 4))
+    plt.imshow(chroma_matrix, aspect='auto', origin='lower', cmap='magma',
+               extent=[0, total_time_sec, 0, 12], interpolation='nearest')
+    
+    plt.colorbar(label='Energy')
+    plt.yticks(np.arange(12), NOTES) # Use NOTES from plot.py
+    plt.xlabel('Time (s)')
+    plt.ylabel('Pitch Class')
+    plt.title('Chromagram - 12 Tone Representation')
+    plt.tight_layout()
+    plt.show()
+
 def _draw_cqt_base_logic(ax, cqt_matrix, total_time_sec, custom_text):
     # Core rendering logic (pixel-perfect interpolation)
     im = ax.imshow(cqt_matrix, aspect='auto', origin='lower', cmap='magma', 

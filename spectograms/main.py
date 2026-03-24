@@ -1,12 +1,11 @@
-from spectograms import *
+from spectograms import generate_spectrogram, create_chromagram, read_audio_universal
+from plot import plot_cqt, save_cqt_image, plot_chromagram
 
 import itertools
 import os
 
 
-
 def generate_combinations(audio_data, sample_rate, base_name):
-     # Generate all (True, False) combinations for the 3 parameters
     param_combinations = list(itertools.product([True, False], repeat=3))
 
     for apply_smoothing, apply_whitening, apply_denoise in param_combinations:
@@ -25,7 +24,6 @@ def generate_combinations(audio_data, sample_rate, base_name):
         # Format custom text for the image
         custom_text = f"Smoothing: {apply_smoothing}\nWhitening: {apply_whitening}\nDenoise: {apply_denoise}"
         
-        # Dynamic filename generation (e.g., Gravity_S1_W0_D1.png)
         suffix = f"S{int(apply_smoothing)}_W{int(apply_whitening)}_D{int(apply_denoise)}"
         output_file = f"spectograms\\output\\{base_name}_{suffix}.png"
         
@@ -38,14 +36,21 @@ def generate_single_spectrogram(audio_data, sample_rate):
     apply_smoothing = True
     apply_whitening = True
     apply_denoise = True
+    apply_short_noises = True
 
     spectrogram = generate_spectrogram(audio_data, sample_rate, method='cqt', 
-                                       apply_smoothing=apply_smoothing, apply_whitening=apply_whitening, apply_denoise=apply_denoise)
-    plot_cqt(spectrogram, custom_text=f"Applied Smoothing: {apply_smoothing}, Whitening: {apply_whitening}, Denoise: {apply_denoise}")
+                                       apply_smoothing=apply_smoothing, apply_whitening=apply_whitening, apply_denoise=apply_denoise, apply_short_noises=apply_short_noises)
+    
+    # Everything quieted down unver the threshold
+    chroma = create_chromagram(spectrogram, threshold_percent=10)
+
+    plot_chromagram(chroma)
+    plot_cqt(spectrogram, custom_text=f"Applied Smoothing: {apply_smoothing},Short noises removed: {apply_short_noises}, Whitening: {apply_whitening}, Denoise: {apply_denoise}")
+
 
 
 def main():
-    file_path = 'spectograms\\samples\\Dużo Ciebie mi (Live Akustycznie).wav'   
+    file_path = 'spectograms\\samples\\Beethoven - Moonlight Sonata (FULL)(1).mp3'   
     audio_data, sample_rate = read_audio_universal(file_path)
 
     if audio_data is None:
