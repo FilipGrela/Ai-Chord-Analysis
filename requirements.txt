@@ -2,4 +2,7 @@ matplotlib
 numpy
 tqdm
 torch
+torchvision
+torchaudio
 scikit-learn
+librosa

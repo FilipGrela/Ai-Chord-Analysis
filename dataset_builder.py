@@ -83,7 +83,6 @@ def save_dataset(X, y, output_dir, prefix_name):
     print(f"X saved to: {x_path}")
     print(f"y saved to: {y_path}")
 
-
 def build_entire_dataset(dataset_root, output_dir, hop_size_ms=50, seq_len=40):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -123,7 +122,7 @@ def build_entire_dataset(dataset_root, output_dir, hop_size_ms=50, seq_len=40):
             cqt_matrix = generate_spectrogram(
                 audio_data, 
                 sample_rate, 
-                method='cqt', 
+                method='cqt_fast', 
                 hop_size_ms=hop_size_ms,
                 apply_smoothing=True, 
                 apply_whitening=False, 

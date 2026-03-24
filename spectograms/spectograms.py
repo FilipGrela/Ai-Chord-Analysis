@@ -2,6 +2,7 @@ import subprocess
 import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
+import librosa
 
 def read_audio_universal(file_path, target_sr=44100):
     command = [
@@ -103,6 +104,24 @@ def remove_short_noises(chroma_matrix, min_duration_frames=3):
 # ==========================================
 #                CORE MATH
 # ==========================================
+
+def calculate_spectogram_cqt_fast(audio_data, sample_rate, hop_size_ms=50):
+    if audio_data.dtype.kind == 'i':
+        max_val = np.iinfo(audio_data.dtype).max + 1
+        audio_data = audio_data.astype(np.float32) / max_val
+    elif audio_data.dtype == np.float64:
+        audio_data = audio_data.astype(np.float32)
+
+    hop_length = int(sample_rate * (hop_size_ms / 1000.0))
+    
+
+    cqt_result = np.abs(librosa.cqt(y=audio_data, sr=sample_rate, 
+                                    hop_length=hop_length, fmin=32.703, 
+                                    n_bins=84, bins_per_octave=12))
+                                    
+
+    cqt_db = librosa.amplitude_to_db(cqt_result, ref=np.max)
+    return cqt_db
 
 def calculate_spectogram_cqt(audio_data, sample_rate, fmin=32.703, n_bins=84, bins_per_octave=12, hop_size_ms=50):
 
@@ -223,15 +242,17 @@ def create_chromagram(cqt_matrix, threshold_percent=25):
 #                 PIPELINE
 # ==========================================
 
-def generate_spectrogram(audio_data, sample_rate, method='cqt', 
+def generate_spectrogram(audio_data, sample_rate, method='cqt_fast', 
                          apply_denoise=True, apply_short_noises=True, apply_whitening=True, apply_smoothing=True, **kwargs):
 
     if method == 'cqt':
         spectrogram = calculate_spectogram_cqt(audio_data, sample_rate,n_bins=84, **kwargs)
+    elif method == 'cqt_fast':
+        spectrogram = calculate_spectogram_cqt_fast(audio_data, sample_rate, **kwargs)
     elif method == 'rfft':
         spectrogram = calculate_spectogram_rfft(audio_data, sample_rate, **kwargs)
     else:
-        raise ValueError(f"Nieznana metoda spektrogramu: {method}. Dostępne opcje: 'cqt', 'rfft'.")
+        raise ValueError(f"Nieznana metoda spektrogramu: {method}. Dostępne opcje: 'cqt', 'cqt_fast', 'rfft'.")
     
 
     
