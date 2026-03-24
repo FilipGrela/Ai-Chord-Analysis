@@ -59,8 +59,8 @@ def process_single_song(audio_path, label_path, output_dir, hop_size_ms=50, seq_
     return True
 
 def main():
-    audio_file = os.path.join('single_test_data', 'isophonics_0', 'isophonics_0.mp3')  # lub nazwa pliku, który masz
-    label_file = os.path.join('single_test_data', 'isophonics_0', 'isophonics_0.jams')   # lub Twój plik .jams
+    audio_file = os.path.join('single_test_data', 'isophonics_0', 'isophonics_0.mp3')
+    label_file = os.path.join('single_test_data', 'isophonics_0', 'isophonics_0.jams')
     output_directory = os.path.join('out', 'dataset_output')
 
     success = process_single_song(

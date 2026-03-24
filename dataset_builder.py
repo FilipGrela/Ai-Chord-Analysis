@@ -1,6 +1,10 @@
 import numpy as np
+import glob
 import os
+import traceback
 
+from spectograms.spectograms import read_audio_universal, generate_spectrogram
+from labels_parser import parse_labels
 
 # Define the vocabulary of chord labels (simplified)
 NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
@@ -78,3 +82,74 @@ def save_dataset(X, y, output_dir, prefix_name):
     print(f"Dataset saved: {X.shape[0]} sequences of shape {X.shape[1:]}")
     print(f"X saved to: {x_path}")
     print(f"y saved to: {y_path}")
+
+
+def build_entire_dataset(dataset_root, output_dir, hop_size_ms=50, seq_len=40):
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    subfolders = [f.path for f in os.scandir(dataset_root) if f.is_dir()]
+
+    print(f"Znaleziono {len(subfolders)} podfolderów w {dataset_root}.")
+
+    success_count = 0
+    error_count = 0
+
+    for folder in subfolders:
+        folder_name = os.path.basename(folder)
+        audio_files= glob.glob(os.path.join(folder, '*.mp3')) + glob.glob(os.path.join(folder, '*.wav'))
+        label_files = glob.glob(os.path.join(folder, '*.jams'))
+
+        if not audio_files or not label_files:
+            print(f"\n[POMINIĘTO] {folder_name}: Brakuje pliku audio lub etykiet.")
+            error_count += 1
+            continue
+
+        audio_path = audio_files[0]
+        label_path = label_files[0]
+
+        try:
+            print(f"Przetwarzanie: {folder_name}...")
+            
+            # 1. Odczyt Audio
+            audio_data, sample_rate = read_audio_universal(audio_path)
+            if audio_data is None:
+                raise ValueError("Błąd odczytu pliku audio.")
+
+            # 2. Odczyt Etykiet
+            parsed_labels = parse_labels(label_path)
+
+            # 3. Generowanie CQT
+            cqt_matrix = generate_spectrogram(
+                audio_data, 
+                sample_rate, 
+                method='cqt', 
+                hop_size_ms=hop_size_ms,
+                apply_smoothing=True, 
+                apply_whitening=False, 
+                apply_denoise=True
+            )
+
+            # 4. Synchronizacja milisekund z etykietami
+            num_bins, num_frames = cqt_matrix.shape
+            frame_labels_int = align_frames_with_labels(num_frames, parsed_labels, hop_size_ms=hop_size_ms)
+
+            # 5. Pocięcie na sekwencje
+            X, y = create_sequences(cqt_matrix, frame_labels_int, seq_len=seq_len, hop_seq=10)
+
+            # 6. Zapis
+            save_dataset(X, y, output_dir, prefix_name=folder_name)
+            
+            success_count += 1
+        except Exception as e:
+            print(f"\n[BŁĄD] Wystąpił problem przy utworze {folder_name}: {e}")
+            traceback.print_exc()
+            error_count += 1
+            continue
+
+
+if __name__ == "__main__":
+    dataset_root = 'isophonics_dataset'  # Folder z podfolderami utworów
+    output_dir = os.path.join('out', 'full_dataset')
+    
+    build_entire_dataset(dataset_root, output_dir, hop_size_ms=50, seq_len=40)
