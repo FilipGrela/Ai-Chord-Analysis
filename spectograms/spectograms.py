@@ -3,8 +3,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
 
-from plot import plot_cqt, save_cqt_image
-
 def read_audio_universal(file_path, target_sr=44100):
     command = [
         'ffmpeg',

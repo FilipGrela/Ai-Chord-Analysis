@@ -2,7 +2,7 @@ import os
 from tqdm import tqdm
 
 from spectograms.spectograms import read_audio_universal, generate_spectrogram
-from spectograms.plot import save_image
+from spectograms.plot import save_cqt_image
 from labels_parser import parse_labels
 from dataset_builder import align_frames_with_labels, create_sequences, save_dataset
 
@@ -43,7 +43,7 @@ def process_single_song(audio_path, label_path, output_dir, hop_size_ms=50, seq_
 
     # Save CQT image for visual inspection 
     img_path = os.path.join(output_dir, f"{base_name}_cqt_check.png")
-    save_image(cqt_matrix, img_path, hop_size_ms=hop_size_ms, title=f"CQT: {base_name}")
+    save_cqt_image(cqt_matrix, img_path, hop_size_ms=hop_size_ms, custom_text=f"CQT: {base_name}")
 
     # Alignment of frames with labels
     print("Synchronizacja ramek z etykietami...")
