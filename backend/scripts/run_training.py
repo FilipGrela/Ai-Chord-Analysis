@@ -1,0 +1,49 @@
+import os
+import torch
+
+# Optymalizacja ładowania kerneli dla kart z serii RTX 50, mozecie wyłączyć jak co
+os.environ["CUDA_MODULE_LOADING"] = "LAZY"
+
+from backend.config import cfg_paths, cfg_train
+from backend.data.loader import DataLoaderFactory
+from backend.models.crnn import ChordCRNN
+from backend.training.loss import LossFactory
+from backend.training.trainer import Trainer
+
+def main():
+    print("--- Inicjalizacja Architektury Treningowej AI-Chord-Analysis ---")
+    
+    # 1. Konfiguracja sprzętowa (GPU/CPU)
+    if torch.cuda.is_available():
+        torch.cuda.set_device(0)
+        device = torch.device("cuda:0")
+
+    else:
+        device = torch.device("cpu")
+
+    
+    # 2. Załadowanie danych z dysku do RAM-u
+    train_loader, val_loader = DataLoaderFactory.create_dataloaders(
+        data_dir=cfg_paths.PROCESSED_DATA, 
+        batch_size=cfg_train.BATCH_SIZE
+    )
+    
+    # 3. Budowa grafu obliczeniowego
+    model = ChordCRNN()
+    
+    # 4. Inteligentna funkcja straty (z wagami klas)
+    criterion = LossFactory.create_loss_function(train_loader, device)
+    
+    # 5. Uruchomienie pętli uczącej
+    trainer = Trainer(
+        model=model,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        criterion=criterion,
+        device=device
+    )
+    
+    trainer.train()
+
+if __name__ == "__main__":
+    main()

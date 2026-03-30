@@ -1,0 +1,1 @@
+# Tutaj umieść plik audio do analizy
