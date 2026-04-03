@@ -23,11 +23,15 @@ class DatasetBuilder:
 
     @classmethod
     def align_frames_with_labels(cls, num_frames: int, parsed_labels: list, hop_size_ms: int) -> np.ndarray:
-        frame_labels_int = np.full(num_frames, cls.CHORD_TO_INT['N'], dtype=np.int32)
+        """
+        Funkcja wyrównuje klatki nagrań z powstałe podczas fragmentacji przez algorytm, z tymi widocznymi w datasecie.
+        """
+        frame_labels_int = np.full(num_frames, cls.CHORD_TO_INT['N'], dtype=np.int32) # Pusta tablica wypełniona ciszą ('N')
         for frame_idx in range(num_frames):
-            time_sec = frame_idx * (hop_size_ms / 1000.0)
+            time_sec = frame_idx * (hop_size_ms / 1000.0) # Aktualny moment w nagraniu w sekundach
             for start, end, chord in parsed_labels:
-                if start <= time_sec < end:
+                if start <= time_sec < end: # Sprawdzamy, czy aktualny czas mieści się w zakresie etykiety
+                    # Przypisanie nowej sygnatury czasowej do klatki.
                     safe_chord = chord if chord in cls.CHORD_TO_INT else 'N'
                     frame_labels_int[frame_idx] = cls.CHORD_TO_INT[safe_chord]
                     break
@@ -35,35 +39,73 @@ class DatasetBuilder:
 
     @classmethod
     def create_sequences(cls, cqt_matrix: np.ndarray, frame_labels_int: np.ndarray, seq_len: int, hop_seq: int = 10):
+        """
+        Funkcja tworzy zbiór sekwencji (X) i odpowiadających im etykiet (y)
+        na podstawie macierzy CQT i wyrównanych etykiet klatkowych.
+        """
         num_bins, num_frames = cqt_matrix.shape
         X_sequences, y_labels = [], []
-        for start_idx in range(0, num_frames - seq_len + 1, hop_seq):
+        for start_idx in range(0, num_frames - seq_len + 1, hop_seq): 
             end_idx = start_idx + seq_len
-            patch_t = cqt_matrix[:, start_idx:end_idx].T 
-            center_idx = start_idx + (seq_len // 2)
+            # Ekstrakcja wycinka nagrania o długości hop_seq. Transpozycja
+            # Tak, aby sekwencje były w formacie (seq_len, num_bins)
+            patch_t = cqt_matrix[:, start_idx:end_idx].T
+
+            # Wybranie akordu, który wybrzmiewa w środkowej części fragmentu
+            center_idx = start_idx + (seq_len // 2) 
             label = frame_labels_int[center_idx]
             
+
             X_sequences.append(patch_t)
             y_labels.append(label)
         return np.array(X_sequences), np.array(y_labels)
 
     @staticmethod
     def _process_single_folder(folder_path: str, output_dir: str, hop_size_ms: int, seq_len: int) -> tuple[bool, str]:
-        """Funkcja statyczna dla bezpiecznego wywołania w osobnym procesie."""
+        """
+        Funkcja 
+        """
         folder_name = os.path.basename(folder_path)
-        audio_files = glob.glob(os.path.join(folder_path, '*.mp3')) + glob.glob(os.path.join(folder_path, '*.wav'))
-        label_files = glob.glob(os.path.join(folder_path, '*.jams')) + glob.glob(os.path.join(folder_path, '*.csv')) + glob.glob(os.path.join(folder_path, '*.txt'))
 
+        # Wszystkie pliki audio i labels w konkretnym folderze. 
+        # Zakładamy, że mają taką samą zawartość a folder zawiera dane tylko do jednego nagrania.
+        audio_files = glob.glob(os.path.join(folder_path, '*.mp3')) + \
+                        glob.glob(os.path.join(folder_path, '*.wav'))
+        label_files = glob.glob(os.path.join(folder_path, '*.jams')) + \
+                        glob.glob(os.path.join(folder_path, '*.csv')) + \
+                        glob.glob(os.path.join(folder_path, '*.txt'))
+
+        # Sprawdzamy czy foldery nie są puste.
         if not audio_files or not label_files:
             return False, f"Pominięto {folder_name}: brak wymaganych plików"
 
         try:
             processor = AudioProcessor() # Lokalna instancja dla procesu
-            audio_data, sample_rate = processor.read_audio_universal(audio_files[0])
-            if audio_data is None:
-                return False, f"Błąd odczytu audio: {folder_name}"
 
-            parsed_labels = ChordLabelParser.parse(label_files[0])
+            # Próbuj odczytu kolejnych plików audio, aż któryś się wczyta poprawnie.
+            audio_data, sample_rate = None, None
+            for audio_file in audio_files:
+                audio_data, sample_rate = processor.read_audio_universal(audio_file)
+                if audio_data is not None:
+                    break
+                
+            if audio_data is None:
+                return False, f"Błąd odczytu audio: {folder_name}"  
+
+            # Próbuj kolejnych plików etykiet, aż któryś będzie niepusty i poprawnie się sparsuje.
+            parsed_labels = None
+            for label_file in label_files:
+                if os.path.getsize(label_file) == 0:
+                    continue
+                try:
+                    parsed_labels = ChordLabelParser.parse(label_file)
+                    break
+                except Exception:
+                    continue
+
+            if parsed_labels is None:
+                return False, f"Pominięto {folder_name}: brak poprawnego pliku etykiet"
+
             cqt_matrix = processor.generate_spectrogram(audio_data)
 
             num_frames = cqt_matrix.shape[1]
@@ -78,6 +120,7 @@ class DatasetBuilder:
             return False, f"Błąd krytyczny w {folder_name}: {str(e)}"
 
     def build_entire_dataset(self):
+        # Tworzy folder na output, jeżeli wcześniej nie istnieje.
         if not os.path.exists(self.paths.PROCESSED_DATA):
             os.makedirs(self.paths.PROCESSED_DATA)
 
@@ -86,8 +129,7 @@ class DatasetBuilder:
         total_albums = len(albums)
         print(f"Rozpoczynam zrównoleglone przetwarzanie {total_albums} albumów...")
 
-        # 1. Obliczamy bezpieczną liczbę "robotników" (procesów)
-        # os.cpu_count() może w skrajnych przypadkach zwrócić None, więc zabezpieczamy się wartością domyślną
+        # Obliczamy bezpieczną liczbę "robotników" (procesów)
         total_cores = os.cpu_count() or 4
         safe_workers = max(1, total_cores - 2) # Zawsze zostawiamy 2 wolne wątki, ale nie mniej niż 1 do pracy
         
@@ -100,7 +142,7 @@ class DatasetBuilder:
 
         results, errors = [], []
         
-        # 2. Inicjalizacja puli procesów (robimy to raz dla całej operacji, aby oszczędzić zasoby)
+        # Inicjalizacja puli procesów (robimy to raz dla całej operacji, aby oszczędzić zasoby)
         with ProcessPoolExecutor(max_workers=safe_workers) as executor:
             
             # Pasek postępu poziomu 0 (Albumy)
