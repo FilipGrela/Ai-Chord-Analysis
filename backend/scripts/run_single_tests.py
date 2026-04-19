@@ -1,6 +1,13 @@
 import os
+import sys
 import itertools
 from glob import glob
+
+# Pozwala uruchamiac skrypt jako plik: `python backend/scripts/run_single_tests.py`.
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 from backend.config import cfg_paths
 from backend.dsp.spectrograms import AudioProcessor
 from backend.dsp.plot import SpectrogramVisualizer
@@ -42,10 +49,10 @@ def run_single_interactive(processor: AudioProcessor, audio_data):
     a następnie wyświetla je w interaktywnym oknie Matplotlib.
     """
     print("\n--- Generowanie interaktywnego spektrogramu i chromagramu ---")
-    apply_smoothing = True
-    apply_whitening = True
-    apply_denoise = True
-    apply_short_noises = True
+    apply_smoothing = False
+    apply_whitening = False
+    apply_denoise = False
+    apply_short_noises = False
     
     spectrogram = processor.generate_spectrogram(
         audio_data,
