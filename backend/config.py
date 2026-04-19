@@ -33,8 +33,13 @@ class TrainConfig:
     LEARNING_RATE: float = 0.0001
     PATIENCE: int = 5
 
+@dataclass
+class BuilderConfig:
+    CQT_METHOD: str = 'cqt' # 'cqt' lub 'cqt_fast'
+
 
 # Instancje konfiguracji do importowania w całym projekcie
 cfg_paths = PathsConfig()
 cfg_audio = AudioConfig()
 cfg_train = TrainConfig()
+cfg_builder = BuilderConfig()

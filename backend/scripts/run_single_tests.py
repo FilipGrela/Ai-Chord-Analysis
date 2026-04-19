@@ -80,6 +80,7 @@ def main():
     # 1. Inicjalizacja procesora audio (pobiera ustawienia z config.py)
     processor = AudioProcessor()
     
+    
     # 2. Ścieżka do testowego pliku (izolowany folder testowy)
     search_path = cfg_paths.SINGLE_TEST_DATA
 

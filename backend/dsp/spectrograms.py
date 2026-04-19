@@ -142,9 +142,10 @@ class AudioProcessor:
         _ = threshold_percent
         return self._cqt.toChromagram(cqt_matrix)
 
-    def generate_spectrogram(self, audio_data: np.ndarray, method='cqt_fast', 
-                             apply_denoise=True, apply_short_noises=True, 
-                             apply_whitening=True, apply_smoothing=True, **kwargs) -> np.ndarray:
+    def generate_spectrogram(self, audio_data: np.ndarray, method='cqt', 
+                             apply_denoise=False, apply_short_noises=False, 
+                             apply_whitening=False, apply_smoothing=False, **kwargs) -> np.ndarray:
+
 
         if method == 'cqt':
             spectrogram = self.calculate_spectogram_cqt(audio_data, **kwargs)

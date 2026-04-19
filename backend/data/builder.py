@@ -5,7 +5,7 @@ from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 from tqdm import tqdm
 
-from backend.config import cfg_paths, cfg_audio
+from backend.config import cfg_paths, cfg_audio, cfg_builder
 from backend.dsp.spectrograms import AudioProcessor
 from backend.data.parser import ChordLabelParser
 
@@ -20,6 +20,7 @@ class DatasetBuilder:
         self.paths = config_paths
         self.audio_cfg = config_audio
         self.processor = AudioProcessor(config=self.audio_cfg)
+        self.cqt_method = cfg_builder.CQT_METHOD
 
     @classmethod
     def align_frames_with_labels(cls, num_frames: int, parsed_labels: list, hop_size_ms: int) -> np.ndarray:
@@ -106,7 +107,7 @@ class DatasetBuilder:
             if parsed_labels is None:
                 return False, f"Pominięto {folder_name}: brak poprawnego pliku etykiet"
 
-            cqt_matrix = processor.generate_spectrogram(audio_data)
+            cqt_matrix = processor.generate_spectrogram(method=cfg_builder.CQT_METHOD, audio_data=audio_data)
 
             num_frames = cqt_matrix.shape[1]
             frame_labels_int = DatasetBuilder.align_frames_with_labels(num_frames, parsed_labels, hop_size_ms)
@@ -141,6 +142,7 @@ class DatasetBuilder:
                               hop_size_ms=self.audio_cfg.HOP_SIZE_MS, seq_len=self.audio_cfg.SEQ_LEN)
 
         results, errors = [], []
+        counter = 0
         
         # Inicjalizacja puli procesów (robimy to raz dla całej operacji, aby oszczędzić zasoby)
         with ProcessPoolExecutor(max_workers=safe_workers) as executor:
@@ -152,16 +154,21 @@ class DatasetBuilder:
                 tracks = [f.path for f in os.scandir(album_path) if f.is_dir()]
                 album_name = os.path.basename(album_path)
                 
+
                 # Jeśli album jest pusty, pomijamy go
                 if not tracks:
                     continue
                 
                 # Uruchomienie zadań w puli procesów dla utworów w konkretnym albumie
                 track_results = executor.map(worker_func, tracks)
+
                 
                 # Pasek postępu poziomu 1 (Utwory). 
                 # 'leave=False' sprawia, że po ukończeniu albumu ten pasek zniknie i zrobi miejsce dla kolejnego.
                 for success, msg in tqdm(track_results, total=len(tracks), desc=f"Przetwarzanie: {album_name}", position=1, leave=False):
+                    counter += 1
+                    if counter >= 10:
+                        break
                     if success:
                         results.append(msg)
                     else:
