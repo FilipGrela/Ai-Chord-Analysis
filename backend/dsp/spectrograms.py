@@ -1,6 +1,7 @@
 import subprocess
 import shutil
 import numpy as np
+import librosa
 from backend.config import cfg_audio
 from backend.dsp.src.cqtTransform import CqtTransform
 from backend.dsp.src.pipeline import Pipeline
@@ -57,14 +58,23 @@ class AudioProcessor:
             raise RuntimeError("FFmpeg nie został znaleziony w systemie. Dodaj go do PATH i uruchom terminal ponownie.")
 
     def calculate_spectogram_cqt_fast(self, audio_data: np.ndarray) -> np.ndarray:
-        # Stara nazwa metody zostaje dla kompatybilnosci, ale liczy nowy pipeline.
+        # Szybka ścieżka oparta o librosa.cqt.
+        audio_data = self._prepare_audio_float32(audio_data)
+        cqt_result = np.abs(librosa.cqt(
+            y=audio_data,
+            sr=self.sample_rate,
+            hop_length=self.hop_length,
+            fmin=32.703,
+            n_bins=self.n_bins,
+            bins_per_octave=12,
+        ))
+        return librosa.amplitude_to_db(cqt_result, ref=np.max)
+
+    def calculate_spectogram_cqt(self, audio_data: np.ndarray, fmin=32.703, bins_per_octave=12) -> np.ndarray:
+        # Twoja własna ścieżka DSP z backend/dsp/src.
+        _ = (fmin, bins_per_octave)
         audio_data = self._prepare_audio_float32(audio_data)
         return self._pipeline.processArrayForAI(audio_data, self.sample_rate)
-
-    # oby dwie metody robia to samo ale nie usuwam dla kompatybilnosci
-    def calculate_spectogram_cqt(self, audio_data: np.ndarray, fmin=32.703, bins_per_octave=12) -> np.ndarray:
-        _ = (fmin, bins_per_octave)
-        return self.calculate_spectogram_cqt_fast(audio_data)
 
     def smooth_harmonics(self, spectrogram: np.ndarray, kernel_size: int = 15) -> np.ndarray:
         # Utrzymujemy to samo zachowanie co wczesniej (moving average), ale bez tqdm.
@@ -136,7 +146,11 @@ class AudioProcessor:
                              apply_denoise=True, apply_short_noises=True, 
                              apply_whitening=True, apply_smoothing=True, **kwargs) -> np.ndarray:
 
-        if method in ('cqt', 'cqt_fast', 'pipeline'):
+        if method == 'cqt':
+            spectrogram = self.calculate_spectogram_cqt(audio_data, **kwargs)
+        elif method == 'cqt_fast':
+            spectrogram = self.calculate_spectogram_cqt_fast(audio_data)
+        elif method == 'pipeline':
             spectrogram = self.calculate_spectogram_cqt(audio_data, **kwargs)
         elif method == 'rfft':
             spectrogram = self.calculate_spectogram_rfft(audio_data, **kwargs)
