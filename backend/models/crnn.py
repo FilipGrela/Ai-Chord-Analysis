@@ -4,7 +4,7 @@ import torch.nn as nn
 class ChordCRNN(nn.Module):
     """Architektura Convolutional Recurrent Neural Network dla rozpoznawania akordów."""
     
-    def __init__(self, num_classes=25, dropout_rate=0.4):
+    def __init__(self, num_classes=25, dropout_rate=0.4, rnn_num_layers: int = 2):
         super(ChordCRNN, self).__init__()
         
         # BLOK CNN: Ekstrakcja cech przestrzennych z macierzy CQT
@@ -30,8 +30,16 @@ class ChordCRNN(nn.Module):
         
         # BLOK RNN: Zrozumienie kontekstu w czasie (sekwencje)
         # 64 filtry z CNN * 10 (wysokość wymiaru częstotliwości po poolingach) = 640
-        self.rnn = nn.GRU(input_size=640, hidden_size=128, num_layers=2, 
-                          batch_first=True, bidirectional=True, dropout=dropout_rate)
+        # Dropout w GRU ma efekt tylko dla num_layers > 1.
+        gru_dropout = dropout_rate if rnn_num_layers > 1 else 0.0
+        self.rnn = nn.GRU(
+            input_size=640,
+            hidden_size=128,
+            num_layers=rnn_num_layers,
+            batch_first=True,
+            bidirectional=True,
+            dropout=gru_dropout
+        )
         
         self.dropout = nn.Dropout(p=dropout_rate)
         # Z Bidirectional GRU wychodzi 128 * 2 = 256

@@ -1,13 +1,16 @@
 import torch
 import torch.nn as nn
 import numpy as np
+from backend.logger.logger import Logger
+
+logger = Logger(__name__)
 
 class LossFactory:
     """Klasa odpowiedzialna za produkcję zbalansowanych funkcji straty."""
 
     @staticmethod
     def get_smoothed_weights(train_loader, num_classes: int = 25) -> torch.Tensor:
-        print("Obliczanie wygładzonych wag klas (Label Smoothing)...")
+        logger.info("Obliczanie wygładzonych wag klas (Label Smoothing)...")
         class_counts = np.zeros(num_classes)
         
         # Zliczanie wystąpień klas

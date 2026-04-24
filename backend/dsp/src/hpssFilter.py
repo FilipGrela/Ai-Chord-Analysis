@@ -1,5 +1,8 @@
 import numpy as np
 import librosa
+from backend.logger.logger import Logger
+
+logger = Logger(__name__)
 
 class HpssFilter:
       def __init__(self, harmonicMargin: float, percussiveMargin: float):
@@ -17,7 +20,7 @@ class HpssFilter:
 
       def extractHarmonic(self):
           if self.__y is None:
-                print("Load audio first!!!")
+                logger.error("Load audio first!!!")
                 return None, None
           yHarmonic, _ = librosa.effects.hpss(self.__y, margin=(self.__harmonicMargin, self.__percussiveMargin))
           return yHarmonic, self.__sr #czestotliwosc probkowania potrzebna

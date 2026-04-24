@@ -3,6 +3,9 @@ import torch
 import torch.optim as optim
 from tqdm import tqdm
 from backend.config import cfg_train, cfg_paths
+from backend.logger.logger import Logger
+
+logger = Logger(__name__)
 
 class Trainer:
     """Silnik zarządzający cyklem życia modelu (Trening, Walidacja, Checkpointing)."""
@@ -31,12 +34,14 @@ class Trainer:
 
     def _log_metrics(self, epoch, train_loss, train_acc, val_loss, val_acc):
         """MIEJSCE NA MLOps: W przyszłości tutaj podpinamy np. wandb.log()"""
-        print(f"Epoka {epoch}/{self.config.EPOCHS} | "
-              f"Train Loss: {train_loss:.4f} (Acc: {train_acc:.2f}%) | "
-              f"Val Loss: {val_loss:.4f} (Acc: {val_acc:.2f}%)")
+        logger.info(
+            f"Epoka {epoch}/{self.config.EPOCHS} | "
+            f"Train Loss: {train_loss:.4f} (Acc: {train_acc:.2f}%) | "
+            f"Val Loss: {val_loss:.4f} (Acc: {val_acc:.2f}%)"
+        )
 
     def train(self):
-        print(f"\nRozpoczęcie treningu na urządzeniu: {self.device}")
+        logger.info(f"Rozpoczęcie treningu na urządzeniu: {self.device}")
         best_val_loss = float('inf')
         epochs_no_improve = 0
         
@@ -88,17 +93,17 @@ class Trainer:
             current_lr = self.optimizer.param_groups[0]['lr']
             self.scheduler.step(val_loss)
             if self.optimizer.param_groups[0]['lr'] < current_lr:
-                print(f"-> Scheduler zmniejszył Learning Rate do: {self.optimizer.param_groups[0]['lr']}")
+                logger.info(f"-> Scheduler zmniejszył Learning Rate do: {self.optimizer.param_groups[0]['lr']}")
                 
             # Model Checkpointing i Early Stopping
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 epochs_no_improve = 0
                 torch.save(self.model.state_dict(), self.paths.MODEL_SAVE_PATH)
-                print(f"-> Zapisano nowy, lepszy model: {os.path.basename(self.paths.MODEL_SAVE_PATH)}\n")
+                logger.info(f"-> Zapisano nowy, lepszy model: {os.path.basename(self.paths.MODEL_SAVE_PATH)}")
             else:
                 epochs_no_improve += 1
-                print(f"-> Brak poprawy od {epochs_no_improve} epok.\n")
+                logger.warning(f"-> Brak poprawy od {epochs_no_improve} epok.")
                 if epochs_no_improve >= self.config.PATIENCE:
-                    print("Early Stopping: Przerwano trening by uniknąć przeuczenia.")
+                    logger.warning("Early Stopping: Przerwano trening by uniknąć przeuczenia.")
                     break

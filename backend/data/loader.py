@@ -4,6 +4,9 @@ import torch
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import train_test_split
+from backend.logger.logger import Logger
+
+logger = Logger(__name__)
 
 class ChordDataset(Dataset):
     """Pojedynczy pojemnik PyTorch na dane ułożone w pamięci RAM."""
@@ -36,12 +39,12 @@ class DataLoaderFactory:
             x_files, y_files, test_size=test_size, random_state=42
         )
         
-        print(f"--- Przygotowanie Danych ---")
-        print(f"Ładowanie {len(x_train_files)} utworów do zbioru Treningowego...")
+        logger.info("--- Przygotowanie Danych ---")
+        logger.info(f"Ładowanie {len(x_train_files)} utworów do zbioru Treningowego...")
         X_train = np.vstack([np.load(f) for f in x_train_files])
         y_train = np.concatenate([np.load(f) for f in y_train_files])
         
-        print(f"Ładowanie {len(x_val_files)} utworów do zbioru Walidacyjnego...")
+        logger.info(f"Ładowanie {len(x_val_files)} utworów do zbioru Walidacyjnego...")
         X_val = np.vstack([np.load(f) for f in x_val_files])
         y_val = np.concatenate([np.load(f) for f in y_val_files])
         

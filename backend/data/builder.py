@@ -8,6 +8,9 @@ from tqdm import tqdm
 from backend.config import cfg_paths, cfg_audio, cfg_builder
 from backend.dsp.spectrograms import AudioProcessor
 from backend.data.parser import ChordLabelParser
+from backend.logger.logger import Logger
+
+logger = Logger(__name__)
 
 class DatasetBuilder:
     """Klasa orkiestrująca budowanie zbioru danych (Multiprocessing)."""
@@ -128,14 +131,14 @@ class DatasetBuilder:
         #  Pobieranie listy albumów (katalogów wewnątrz RAW_DATA)
         albums = [f.path for f in os.scandir(self.paths.RAW_DATA) if f.is_dir()]
         total_albums = len(albums)
-        print(f"Rozpoczynam zrównoleglone przetwarzanie {total_albums} albumów...")
+        logger.info(f"Rozpoczynam zrównoleglone przetwarzanie {total_albums} albumów...")
 
         # Obliczamy bezpieczną liczbę "robotników" (procesów)
         total_cores = os.cpu_count() or 4
         safe_workers = max(1, total_cores - 2) # Zawsze zostawiamy 2 wolne wątki, ale nie mniej niż 1 do pracy
         
-        print(f"Rozpoczynam zrównoleglone przetwarzanie {total_albums} albumów...")
-        print(f"Używam {safe_workers} procesów z {total_cores} dostępnych na Twoim CPU.")
+        logger.info(f"Rozpoczynam zrównoleglone przetwarzanie {total_albums} albumów...")
+        logger.info(f"Używam {safe_workers} procesów z {total_cores} dostępnych na Twoim CPU.")
 
         # Przygotowanie funkcji roboczej
         worker_func = partial(self._process_single_folder, output_dir=self.paths.PROCESSED_DATA, 
@@ -175,8 +178,8 @@ class DatasetBuilder:
                         errors.append(msg)
 
         # Dodatkowe przełamanie linii (\n), aby oddzielić wynik od pasków tqdm
-        print(f"\nUkończono! Sukcesy: {len(results)}, Błędy: {len(errors)}")
+        logger.info(f"Ukończono! Sukcesy: {len(results)}, Błędy: {len(errors)}")
         if errors:
-            print("Raport błędów:")
+            logger.warning("Raport błędów:")
             for err in errors: 
-                print(f" - {err}")
+                logger.error(f" - {err}")

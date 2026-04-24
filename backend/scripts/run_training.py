@@ -9,9 +9,12 @@ from backend.data.loader import DataLoaderFactory
 from backend.models.crnn import ChordCRNN
 from backend.training.loss import LossFactory
 from backend.training.trainer import Trainer
+from backend.logger.logger import Logger
+
+logger = Logger(__name__)
 
 def main():
-    print("--- Inicjalizacja Architektury Treningowej AI-Chord-Analysis ---")
+    logger.info("--- Inicjalizacja Architektury Treningowej AI-Chord-Analysis ---")
     
     # 1. Konfiguracja sprzętowa (GPU/CPU)
     if torch.cuda.is_available():

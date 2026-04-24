@@ -5,6 +5,9 @@ import librosa
 from backend.config import cfg_audio
 from backend.dsp.src.cqtTransform import CqtTransform
 from backend.dsp.src.pipeline import Pipeline
+from backend.logger.logger import Logger
+
+logger = Logger(__name__)
 
 class AudioProcessor:
     """Warstwa kompatybilnosci: publiczne API + DSP z backend/dsp/src."""
@@ -50,7 +53,7 @@ class AudioProcessor:
             process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             out, err = process.communicate()
             if process.returncode != 0:
-                print(f"Błąd FFmpeg: {err.decode('utf-8')}")
+                logger.error(f"Błąd FFmpeg: {err.decode('utf-8')}")
                 return None, None
             signal = np.frombuffer(out, dtype=np.int16)
             return signal, target_sr

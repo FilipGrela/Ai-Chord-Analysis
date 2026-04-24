@@ -2,6 +2,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 from backend.config import cfg_audio
+from backend.logger.logger import Logger
+
+logger = Logger(__name__)
 
 class SpectrogramVisualizer:
     """Narzędzie do interaktywnej wizualizacji i zapisu cech audio (CQT, Chromagram)."""
@@ -105,4 +108,4 @@ class SpectrogramVisualizer:
         # Zapis i zwolnienie pamięci (kluczowe przy masowym przetwarzaniu)
         plt.savefig(output_filename, bbox_inches='tight')
         plt.close(fig) 
-        print(f"Zapisano spektrogram: {output_filename}")
+        logger.info(f"Zapisano spektrogram: {output_filename}")

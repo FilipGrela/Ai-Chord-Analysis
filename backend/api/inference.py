@@ -1,9 +1,13 @@
 import torch
 import numpy as np
 import os
+import re
 from backend.config import cfg_paths, cfg_audio
 from backend.models.crnn import ChordCRNN
 from backend.dsp.spectrograms import AudioProcessor
+from backend.logger.logger import Logger
+
+logger = Logger(__name__)
 
 class ChordInferenceEngine:
     """Silnik analityczny wywołujący wytrenowany model na nowych plikach audio."""
@@ -11,19 +15,38 @@ class ChordInferenceEngine:
     NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
     VOCAB = NOTES + [n + 'm' for n in NOTES] + ['N']
     INT_TO_CHORD = {idx: chord for idx, chord in enumerate(VOCAB)}
+    
+    @staticmethod
+    def _extract_state_dict(checkpoint: dict) -> dict:
+        if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+            return checkpoint["state_dict"]
+        return checkpoint
+
+    @staticmethod
+    def _infer_rnn_layers_from_state_dict(state_dict: dict) -> int:
+        layer_ids = []
+        for key in state_dict.keys():
+            match = re.match(r"^rnn\.weight_ih_l(\d+)(?:_reverse)?$", key)
+            if match:
+                layer_ids.append(int(match.group(1)))
+        return (max(layer_ids) + 1) if layer_ids else 2
 
     def __init__(self, model_path: str | None = None, device: torch.device | None = None):
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.processor = AudioProcessor()
-        
-        # Inicjalizacja modelu i wczytanie wag
-        self.model = ChordCRNN(num_classes=len(self.VOCAB)).to(self.device)
         load_path = model_path or cfg_paths.MODEL_SAVE_PATH
         
         if not os.path.exists(load_path):
             raise FileNotFoundError(f"Nie znaleziono pliku modelu: {load_path}. Wytrenuj go najpierw!")
-            
-        self.model.load_state_dict(torch.load(load_path, map_location=self.device))
+
+        checkpoint = torch.load(load_path, map_location=self.device)
+        state_dict = self._extract_state_dict(checkpoint)
+        rnn_num_layers = self._infer_rnn_layers_from_state_dict(state_dict)
+
+        # Inicjalizacja modelu zgodnie z architekturą zapisaną w checkpoint.
+        self.model = ChordCRNN(num_classes=len(self.VOCAB), rnn_num_layers=rnn_num_layers).to(self.device)
+        logger.info(f"Wczytywanie modelu z {rnn_num_layers} warstwami GRU z pliku: {load_path}")
+        self.model.load_state_dict(state_dict)
         self.model.eval() # Tryb ewaluacji (wyłącza Dropout)
 
     def _create_inference_sequences(self, cqt_matrix: np.ndarray):
