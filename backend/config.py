@@ -24,6 +24,17 @@ class AudioConfig:
     HOP_SIZE_MS: int = 50
     SEQ_LEN: int = 40
     N_BINS: int = 84
+    BINS_PER_OCTAVE: int = 12
+    F_MIN: float = 32.703
+
+    HPSS_HARMONIC_MARGIN: float = 2.0
+    HPSS_PERCUSSIVE_MARGIN: float = 1.0
+
+    APPLY_DENOISE: bool = False
+    APPLY_SHORT_NOISES: bool = False
+    APPLY_WHITENING: bool = False
+    APPLY_SMOOTHING: bool = False
+    APPLY_HPSS: bool = False
 
 
 @dataclass

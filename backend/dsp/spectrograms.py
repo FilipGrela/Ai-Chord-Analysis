@@ -4,6 +4,7 @@ import numpy as np
 import librosa
 from backend.config import cfg_audio
 from backend.dsp.src.cqtTransform import CqtTransform
+from backend.dsp.src.hpssFilter import HpssFilter
 from backend.dsp.src.pipeline import Pipeline
 from backend.logger.logger import Logger
 
@@ -16,18 +17,34 @@ class AudioProcessor:
         self.sample_rate = config.SAMPLE_RATE
         self.hop_size_ms = config.HOP_SIZE_MS
         self.n_bins = config.N_BINS
+        self.bins_per_octave = config.BINS_PER_OCTAVE
+        self.f_min = config.F_MIN
+        self.hpss_harmonic_margin = config.HPSS_HARMONIC_MARGIN
+        self.hpss_percussive_margin = config.HPSS_PERCUSSIVE_MARGIN
+
+        self.default_apply_denoise = config.APPLY_DENOISE
+        self.default_apply_short_noises = config.APPLY_SHORT_NOISES
+        self.default_apply_whitening = config.APPLY_WHITENING
+        self.default_apply_smoothing = config.APPLY_SMOOTHING
+        self.default_apply_hpss = config.APPLY_HPSS
         self.hop_length = int(self.sample_rate * (self.hop_size_ms / 1000.0))
 
         # To jest glowny silnik DSP, ktory ma byc uzywany w calym projekcie.
         self._pipeline = Pipeline(
-            harmonicMargin=2.0,
-            percussiveMargin=1.0,
-            fMin=32.703,
+            harmonicMargin=self.hpss_harmonic_margin,
+            percussiveMargin=self.hpss_percussive_margin,
+            fMin=self.f_min,
             fS=self.sample_rate,
             hopLength=self.hop_length,
         )
 
-        self._cqt = CqtTransform(12, 32.703, self.sample_rate, self.hop_length)
+        # Niezalezny filtr HPSS, ktory mozna uruchomic przed dowolna metoda CQT.
+        self._hpss = HpssFilter(
+            harmonicMargin=self.hpss_harmonic_margin,
+            percussiveMargin=self.hpss_percussive_margin,
+        )
+
+        self._cqt = CqtTransform(self.bins_per_octave, self.f_min, self.sample_rate, self.hop_length)
 
     @staticmethod
     def _prepare_audio_float32(audio_data: np.ndarray) -> np.ndarray:
@@ -67,17 +84,24 @@ class AudioProcessor:
             y=audio_data,
             sr=self.sample_rate,
             hop_length=self.hop_length,
-            fmin=32.703,
+            fmin=self.f_min,
             n_bins=self.n_bins,
-            bins_per_octave=12,
+            bins_per_octave=self.bins_per_octave,
         ))
         return librosa.amplitude_to_db(cqt_result, ref=np.max)
 
-    def calculate_spectogram_cqt(self, audio_data: np.ndarray, fmin=32.703, bins_per_octave=12) -> np.ndarray:
-        # Twoja własna ścieżka DSP z backend/dsp/src.
-        _ = (fmin, bins_per_octave)
+    def calculate_spectogram_cqt(self, audio_data: np.ndarray) -> np.ndarray:
+        # Wlasna sciezka DSP z backend/dsp/src.
         audio_data = self._prepare_audio_float32(audio_data)
         return self._pipeline.processArrayForAI(audio_data, self.sample_rate)
+
+    def apply_hpss_filter(self, audio_data: np.ndarray) -> np.ndarray:
+        """Zwraca harmoniczna skladowa sygnalu przez HPSS."""
+        audio_data = self._prepare_audio_float32(audio_data)
+        self._hpss.loadAudioArray(audio_data, self.sample_rate)
+        y_harm, _ = self._hpss.extractHarmonic()
+
+        return y_harm
 
     def smooth_harmonics(self, spectrogram: np.ndarray, kernel_size: int = 15) -> np.ndarray:
         # Utrzymujemy to samo zachowanie co wczesniej (moving average), ale bez tqdm.
@@ -145,23 +169,43 @@ class AudioProcessor:
         _ = threshold_percent
         return self._cqt.toChromagram(cqt_matrix)
 
-    def generate_spectrogram(self, audio_data: np.ndarray, method='cqt', 
-                             apply_denoise=False, apply_short_noises=False, 
-                             apply_whitening=False, apply_smoothing=False, **kwargs) -> np.ndarray:
+    def generate_spectrogram(self, audio_data: np.ndarray, method='cqt',
+                             apply_denoise=None, apply_short_noises=None,
+                             apply_whitening=None, apply_smoothing=None,
+                             apply_hpss=None, **kwargs) -> np.ndarray:
 
+        if apply_denoise is None:
+            apply_denoise = self.default_apply_denoise
+        if apply_short_noises is None:
+            apply_short_noises = self.default_apply_short_noises
+        if apply_whitening is None:
+            apply_whitening = self.default_apply_whitening
+        if apply_smoothing is None:
+            apply_smoothing = self.default_apply_smoothing
+        if apply_hpss is None:
+            apply_hpss = self.default_apply_hpss
+
+        audio_data = self._prepare_audio_float32(audio_data)
+
+        # Dodane bo reczny CQT juz ma 
+        if apply_hpss and method != 'pipeline' and method != 'cqt':
+            audio_data = self.apply_hpss_filter(audio_data)
 
         if method == 'cqt':
+            # Reczna implementacja CQT (wolniejsza ale lepsza)
             spectrogram = self.calculate_spectogram_cqt(audio_data, **kwargs)
         elif method == 'cqt_fast':
+            # CQT z biblioteki (szybkie mniej dokladne)
             spectrogram = self.calculate_spectogram_cqt_fast(audio_data)
         elif method == 'pipeline':
+            # Wersja z HPSS i CQT jako jeden Pipe
             spectrogram = self.calculate_spectogram_cqt(audio_data, **kwargs)
         elif method == 'rfft':
             spectrogram = self.calculate_spectogram_rfft(audio_data, **kwargs)
         else:
             raise ValueError(f"Nieznana metoda: {method}")
 
-        # Te kroki zostają opcjonalne, bo były używane do strojenia jakości wejścia modelu.
+        # Opcjonalne filtry do nałożenia
         if apply_denoise:
             spectrogram = self.denoise_normalize_audio(spectrogram)
         if apply_short_noises:
