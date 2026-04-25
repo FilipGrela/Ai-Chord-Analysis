@@ -44,7 +44,7 @@ class AudioProcessor:
             percussiveMargin=self.hpss_percussive_margin,
         )
 
-        self._cqt = CqtTransform(self.bins_per_octave, self.f_min, self.sample_rate, self.hop_length)
+        self._cqt = CqtTransform(self.bins_per_octave, self.f_min, self.sample_rate, self.hop_length, nBins=self.n_bins)
 
     @staticmethod
     def _prepare_audio_float32(audio_data: np.ndarray) -> np.ndarray:

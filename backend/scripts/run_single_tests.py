@@ -50,15 +50,15 @@ def run_single_interactive(processor: AudioProcessor, audio_data):
     a następnie wyświetla je w interaktywnym oknie Matplotlib.
     """
     print("\n--- Generowanie interaktywnego spektrogramu i chromagramu ---")
-    apply_smoothing = True
-    apply_whitening = True
-    apply_denoise = True
-    apply_short_noises = True
-    apply_hpss = True
+    apply_smoothing = False
+    apply_whitening = False
+    apply_denoise = False
+    apply_short_noises = False
+    apply_hpss = False
     
     spectrogram = processor.generate_spectrogram(
         audio_data,
-        method='cqt_fast',
+        method='cqt',
         apply_smoothing=apply_smoothing,
         apply_whitening=apply_whitening,
         apply_denoise=apply_denoise,
