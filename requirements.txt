@@ -6,3 +6,4 @@ torchvision
 torchaudio
 scikit-learn
 librosa
+colorlog

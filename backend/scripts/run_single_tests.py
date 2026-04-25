@@ -11,16 +11,14 @@ if PROJECT_ROOT not in sys.path:
 from backend.config import cfg_paths
 from backend.dsp.spectrograms import AudioProcessor
 from backend.dsp.plot import SpectrogramVisualizer
-from backend.logger.logger import Logger
 
-logger = Logger(__name__)
 
 def run_combinations(processor: AudioProcessor, audio_data, base_name: str):
     """
     Testuje wszystkie kombinacje filtrów (wygładzanie, wybielanie, odszumianie)
     i zapisuje wyniki jako obrazy .png w folderze wyjściowym.
     """
-    logger.info("--- Generowanie kombinacji filtrów (Zapis do plików) ---")
+    print("--- Generowanie kombinacji filtrów (Zapis do plików) ---")
     param_combinations = list(itertools.product([True, False], repeat=3))
     
     # Upewniamy się, że folder wyjściowy istnieje
@@ -28,7 +26,7 @@ def run_combinations(processor: AudioProcessor, audio_data, base_name: str):
         os.makedirs(cfg_paths.TEST_OUTPUT)
     
     for apply_smoothing, apply_whitening, apply_denoise in param_combinations:
-        logger.info(f"Przetwarzanie -> Smoothing: {apply_smoothing} | Whitening: {apply_whitening} | Denoise: {apply_denoise}")
+        print(f"Przetwarzanie -> Smoothing: {apply_smoothing} | Whitening: {apply_whitening} | Denoise: {apply_denoise}")
         
         spectrogram = processor.generate_spectrogram(
             audio_data,
@@ -44,25 +42,28 @@ def run_combinations(processor: AudioProcessor, audio_data, base_name: str):
         output_file = os.path.join(cfg_paths.TEST_OUTPUT, f"{base_name}_{suffix}.png")
         SpectrogramVisualizer.save_cqt_image(spectrogram, output_file, custom_text=custom_text)
         
-    logger.info(f"Zakończono. Pliki zapisano w: {cfg_paths.TEST_OUTPUT}")
+    print(f"Zakończono. Pliki zapisano w: {cfg_paths.TEST_OUTPUT}")
 
 def run_single_interactive(processor: AudioProcessor, audio_data):
     """
     Generuje pojedynczy spektrogram i chromagram z pełnym filtrowaniem,
     a następnie wyświetla je w interaktywnym oknie Matplotlib.
     """
-    logger.info("--- Generowanie interaktywnego spektrogramu i chromagramu ---")
-    apply_smoothing = False
-    apply_whitening = False
-    apply_denoise = False
-    apply_short_noises = False
+    print("\n--- Generowanie interaktywnego spektrogramu i chromagramu ---")
+    apply_smoothing = True
+    apply_whitening = True
+    apply_denoise = True
+    apply_short_noises = True
+    apply_hpss = True
     
     spectrogram = processor.generate_spectrogram(
         audio_data,
+        method='cqt_fast',
         apply_smoothing=apply_smoothing,
         apply_whitening=apply_whitening,
         apply_denoise=apply_denoise,
-        apply_short_noises=apply_short_noises
+        apply_short_noises=apply_short_noises,
+        apply_hpss=apply_hpss
     )
     
     # Generowanie chromagramu (12 tonów) z wycięciem szumów tła poniżej 10%
@@ -71,14 +72,14 @@ def run_single_interactive(processor: AudioProcessor, audio_data):
     custom_text = (f"Smoothing: {apply_smoothing} | Short noises: {apply_short_noises}\n"
                    f"Whitening: {apply_whitening} | Denoise: {apply_denoise}")
     
-    logger.info("Wyświetlam Chromagram (zamknij okno, aby przejść dalej)...")
+    print("Wyświetlam Chromagram (zamknij okno, aby przejść dalej)...")
     SpectrogramVisualizer.plot_chromagram(chroma)
     
-    logger.info("Wyświetlam Spektrogram CQT...")
+    print("Wyświetlam Spektrogram CQT...")
     SpectrogramVisualizer.plot_cqt(spectrogram, custom_text=custom_text)
 
 def main():
-    logger.info("--- Moduł Diagnostyki DSP (Digital Signal Processing) ---")
+    print("--- Moduł Diagnostyki DSP (Digital Signal Processing) ---")
     
     # 1. Inicjalizacja procesora audio (pobiera ustawienia z config.py)
     processor = AudioProcessor()
@@ -92,22 +93,22 @@ def main():
                   glob(os.path.join(search_path, "*.wav"))
     
     if not audio_files:
-        logger.error("Błąd: Nie znaleziono plików testowych w folderze 'single_test_data/'.")
-        logger.error("Upewnij się, że masz pliki '.mp3' lub '.wav' w folderze 'single_test_data/'.")
+        print("Błąd: Nie znaleziono plików testowych w folderze 'single_test_data/'.")
+        print("Upewnij się, że masz pliki '.mp3' lub '.wav' w folderze 'single_test_data/'.")
         return
         
     file_path = audio_files[0]
     base_name = os.path.splitext(os.path.basename(file_path))[0]
     
     # 3. Odczyt Audio
-    logger.info(f"Wczytywanie pliku: {base_name}.mp3")
+    print(f"\nWczytywanie pliku: {base_name}.mp3")
     audio_data, sample_rate = processor.read_audio_universal(file_path)
     
     if audio_data is None or sample_rate is None:
-        logger.error("Krytyczny błąd: Nie udało się zdekodować pliku audio.")
+        print("Krytyczny błąd: Nie udało się zdekodować pliku audio.")
         return
         
-    logger.info(f"Sample Rate: {sample_rate} Hz, Długość: {len(audio_data) / sample_rate:.2f} s")
+    print(f"Sample Rate: {sample_rate} Hz, Długość: {len(audio_data) / sample_rate:.2f} s")
     
     # =================================================================
     # ODKOMENTUJ ZADANIE, KTÓRE CHCESZ WYKONAĆ:
