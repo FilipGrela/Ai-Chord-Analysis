@@ -44,6 +44,26 @@ class TrainConfig:
     LEARNING_RATE: float = 0.0001
     PATIENCE: int = 5
 
+    # Augmentacja danych (MVP): działa tylko dla train dataset.
+    AUGMENT_ENABLED: bool = False
+
+    AUGMENT_GAIN_ENABLED: bool = True
+    AUGMENT_GAIN_PROB: float = 0.5
+    AUGMENT_GAIN_DB_MIN: float = -6.0
+    AUGMENT_GAIN_DB_MAX: float = 6.0
+
+    AUGMENT_NOISE_ENABLED: bool = True
+    AUGMENT_NOISE_PROB: float = 0.4
+    AUGMENT_NOISE_SNR_DB_MIN: float = 20.0
+    AUGMENT_NOISE_SNR_DB_MAX: float = 35.0
+
+    AUGMENT_SPECMASK_ENABLED: bool = True
+    AUGMENT_SPECMASK_PROB: float = 0.2
+    AUGMENT_SPECMASK_MAX_TIME_MASKS: int = 1
+    AUGMENT_SPECMASK_MAX_FREQ_MASKS: int = 1
+    AUGMENT_SPECMASK_MAX_TIME_WIDTH: int = 4
+    AUGMENT_SPECMASK_MAX_FREQ_WIDTH: int = 8
+
 @dataclass
 class BuilderConfig:
     CQT_METHOD: str = 'cqt' # 'cqt' lub 'cqt_fast'
