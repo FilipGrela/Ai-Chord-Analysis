@@ -1,8 +1,9 @@
 import numpy as np
 import glob
 import os
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from functools import partial
+from typing import cast
 from tqdm import tqdm
 
 from backend.config import cfg_paths, cfg_audio, cfg_builder
@@ -24,6 +25,18 @@ class DatasetBuilder:
         self.audio_cfg = config_audio
         self.processor = AudioProcessor(config=self.audio_cfg)
         self.cqt_method = cfg_builder.CQT_METHOD
+
+    @staticmethod
+    def _output_paths(folder_name: str, output_dir: str) -> tuple[str, str]:
+        return (
+            os.path.join(output_dir, f"{folder_name}_X.npy"),
+            os.path.join(output_dir, f"{folder_name}_y.npy"),
+        )
+
+    @classmethod
+    def _is_folder_already_processed(cls, folder_name: str, output_dir: str) -> bool:
+        x_path, y_path = cls._output_paths(folder_name, output_dir)
+        return os.path.isfile(x_path) and os.path.isfile(y_path)
 
     @classmethod
     def align_frames_with_labels(cls, num_frames: int, parsed_labels: list, hop_size_ms: int) -> np.ndarray:
@@ -70,6 +83,11 @@ class DatasetBuilder:
         Funkcja 
         """
         folder_name = os.path.basename(folder_path)
+        x_path, y_path = DatasetBuilder._output_paths(folder_name, output_dir)
+
+        # Jeśli wynik już istnieje, nie przeliczamy utworu ponownie.
+        if os.path.isfile(x_path) and os.path.isfile(y_path):
+            return True, f"Pominięto {folder_name}: wynik już istnieje"
 
         # Wszystkie pliki audio i labels w konkretnym folderze. 
         # Zakładamy, że mają taką samą zawartość a folder zawiera dane tylko do jednego nagrania.
@@ -96,6 +114,8 @@ class DatasetBuilder:
             if audio_data is None:
                 return False, f"Błąd odczytu audio: {folder_name}"  
 
+            audio_data = cast(np.ndarray, audio_data)
+
             # Próbuj kolejnych plików etykiet, aż któryś będzie niepusty i poprawnie się sparsuje.
             parsed_labels = None
             for label_file in label_files:
@@ -115,9 +135,9 @@ class DatasetBuilder:
             frame_labels_int = DatasetBuilder.align_frames_with_labels(num_frames, parsed_labels, hop_size_ms)
             X, y = DatasetBuilder.create_sequences(cqt_matrix, frame_labels_int, seq_len)
 
-            np.save(os.path.join(output_dir, f"{folder_name}_X.npy"), X.astype(np.float32))
-            np.save(os.path.join(output_dir, f"{folder_name}_y.npy"), y.astype(np.int64))
-            
+            np.save(x_path, X.astype(np.float32))
+            np.save(y_path, y.astype(np.int64))
+
             return True, folder_name
         except Exception as e:
             return False, f"Błąd krytyczny w {folder_name}: {str(e)}"
@@ -136,7 +156,6 @@ class DatasetBuilder:
         total_cores = os.cpu_count() or 4
         safe_workers = max(1, total_cores - 2) # Zawsze zostawiamy 2 wolne wątki, ale nie mniej niż 1 do pracy
         
-        logger.info(f"Rozpoczynam zrównoleglone przetwarzanie {total_albums} albumów...")
         logger.info(f"Używam {safe_workers} procesów z {total_cores} dostępnych na Twoim CPU.")
 
         # Przygotowanie funkcji roboczej
@@ -144,36 +163,63 @@ class DatasetBuilder:
                               hop_size_ms=self.audio_cfg.HOP_SIZE_MS, seq_len=self.audio_cfg.SEQ_LEN)
 
         results, errors = [], []
-        
+        skipped = 0
+
+        # Najpierw liczymy realną liczbę utworów do przetworzenia, aby globalny pasek był wiarygodny.
+        total_pending_tracks = 0
+        album_track_map: list[tuple[str, list[str], list[str]]] = []
+        for album_path in albums:
+            tracks = [f.path for f in os.scandir(album_path) if f.is_dir()]
+            pending_tracks = [
+                track for track in tracks
+                if not self._is_folder_already_processed(os.path.basename(track), self.paths.PROCESSED_DATA)
+            ]
+            total_pending_tracks += len(pending_tracks)
+            album_track_map.append((album_path, tracks, pending_tracks))
+
+        if total_pending_tracks == 0:
+            logger.info("Nie ma już nic do przeliczenia — wszystkie utwory mają gotowe pliki X/y.")
+            return
+
         # Inicjalizacja puli procesów (robimy to raz dla całej operacji, aby oszczędzić zasoby)
-        with ProcessPoolExecutor(max_workers=safe_workers) as executor:
-            
-            # Pasek postępu poziomu 0 (Albumy)
-            for album_path in tqdm(albums, total=total_albums, desc="Postęp ogólny (Albumy)", position=0):
-                
-                # Pobieranie utworów wewnątrz danego albumu
-                tracks = [f.path for f in os.scandir(album_path) if f.is_dir()]
+        with ProcessPoolExecutor(max_workers=safe_workers) as executor, \
+                tqdm(total=total_pending_tracks,
+                     desc="Budowanie datasetu",
+                     position=0,
+                     leave=True,
+                     dynamic_ncols=True,
+                     mininterval=0.1,
+                     smoothing=0.05) as overall_bar:
+
+            for album_path, tracks, pending_tracks in album_track_map:
                 album_name = os.path.basename(album_path)
-                
+                skipped += len(tracks) - len(pending_tracks)
 
-                # Jeśli album jest pusty, pomijamy go
-                if not tracks:
+                if not pending_tracks:
+                    logger.info(f"Pominięto album {album_name}: wszystkie utwory są już gotowe.")
                     continue
-                
-                # Uruchomienie zadań w puli procesów dla utworów w konkretnym albumie
-                track_results = executor.map(worker_func, tracks)
 
-                
-                # Pasek postępu poziomu 1 (Utwory). 
-                # 'leave=False' sprawia, że po ukończeniu albumu ten pasek zniknie i zrobi miejsce dla kolejnego.
-                for success, msg in tqdm(track_results, total=len(tracks), desc=f"Przetwarzanie: {album_name}", position=1, leave=False):
+                logger.info(f"Album {album_name}: do przetworzenia {len(pending_tracks)} utworów, pominięto {len(tracks) - len(pending_tracks)}.")
+                overall_bar.set_description_str(f"Budowanie datasetu | {album_name}")
+                overall_bar.set_postfix_str(f"pozostało {overall_bar.total - overall_bar.n} utworów")
+
+                futures = [executor.submit(worker_func, track) for track in pending_tracks]
+                processed_in_album = 0
+
+                for future in as_completed(futures):
+                    success, msg = future.result()
+                    processed_in_album += 1
+                    overall_bar.update(1)
+                    overall_bar.set_postfix_str(
+                        f"album {processed_in_album}/{len(pending_tracks)} | pozostało {overall_bar.total - overall_bar.n}"
+                    )
                     if success:
                         results.append(msg)
                     else:
                         errors.append(msg)
 
         # Dodatkowe przełamanie linii (\n), aby oddzielić wynik od pasków tqdm
-        logger.info(f"Ukończono! Sukcesy: {len(results)}, Błędy: {len(errors)}")
+        logger.info(f"Ukończono! Sukcesy: {len(results)}, Pominięte: {skipped}, Błędy: {len(errors)}")
         if errors:
             logger.warning("Raport błędów:")
             for err in errors: 
