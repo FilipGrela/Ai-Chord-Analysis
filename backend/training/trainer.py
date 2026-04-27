@@ -1,6 +1,7 @@
-import os
+from pathlib import Path
 import torch
 import torch.optim as optim
+from datetime import datetime
 from tqdm import tqdm
 from backend.config import cfg_train, cfg_paths
 from backend.logger.logger import Logger
@@ -44,7 +45,8 @@ class Trainer:
         logger.info(f"Rozpoczęcie treningu na urządzeniu: {self.device}")
         best_val_loss = float('inf')
         epochs_no_improve = 0
-        
+        best_model_path: Path | None = None
+
         for epoch in range(1, self.config.EPOCHS + 1):
             # ================= FAZA TRENINGU =================
             self.model.train()
@@ -99,8 +101,28 @@ class Trainer:
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 epochs_no_improve = 0
-                torch.save(self.model.state_dict(), self.paths.MODEL_SAVE_PATH)
-                logger.info(f"-> Zapisano nowy, lepszy model: {os.path.basename(self.paths.MODEL_SAVE_PATH)}")
+
+                # Generowanie nazwy z datą i skutecznością
+                date_str = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+                base_path = Path(self.paths.MODEL_SAVE_PATH)
+                dir_path = base_path.parent
+                extension = base_path.suffix
+                filename = base_path.stem
+
+                model_name = f"{filename}_{date_str}_acc{val_acc:.2f}{extension}"
+                model_path = dir_path / model_name
+
+                torch.save(self.model.state_dict(), str(model_path))
+
+                if best_model_path and best_model_path != model_path and best_model_path.exists():
+                    try:
+                        best_model_path.unlink()
+                        logger.info(f"-> Usunięto poprzedni model: {best_model_path.name}")
+                    except OSError as exc:
+                        logger.warning(f"-> Nie udało się usunąć poprzedniego modelu {best_model_path}: {exc}")
+
+                best_model_path = model_path
+                logger.info(f"-> Zapisano nowy, lepszy model: {model_name}")
             else:
                 epochs_no_improve += 1
                 logger.warning(f"-> Brak poprawy od {epochs_no_improve} epok.")

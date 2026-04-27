@@ -1,6 +1,7 @@
 import logging
 import colorlog
 import sys
+from backend.config import cfg_logger
 from typing import Any
 
 class Logger:
@@ -10,7 +11,8 @@ class Logger:
     def __init__(self, nazwa_klasy: str):
         self.logger = logging.getLogger(nazwa_klasy)
         self.logger.setLevel(logging.DEBUG) # Nasłuchujemy wszystkich zdarzeń od poziomu DEBUG wzwyż
-        
+        self.logger.propagate = False
+
         if not self.logger.handlers:
             # Ustawienie wysyłania logów do konsoli (standardowe wyjście)
             console_handler = logging.StreamHandler(sys.stdout)
@@ -43,6 +45,9 @@ class Logger:
         self.logger.error(wiadomosc)
         
     def debug(self, wiadomosc: str):
+        if not cfg_logger.DEBUG:
+            return
+
         self.logger.debug(wiadomosc)
 
     def infoModelTraining(

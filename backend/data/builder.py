@@ -109,7 +109,6 @@ class DatasetBuilder:
 
             if parsed_labels is None:
                 return False, f"Pominięto {folder_name}: brak poprawnego pliku etykiet"
-
             cqt_matrix = processor.generate_spectrogram(method=cfg_builder.CQT_METHOD, audio_data=audio_data)
 
             num_frames = cqt_matrix.shape[1]

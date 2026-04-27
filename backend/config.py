@@ -5,6 +5,9 @@ from dataclasses import dataclass
 # niezależnie od tego, z jakiego miejsca w terminalu odpalisz skrypt.
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+@dataclass
+class LoggerConfig:
+    DEBUG: bool = False
 
 @dataclass
 class PathsConfig:
@@ -45,7 +48,7 @@ class TrainConfig:
     PATIENCE: int = 5
 
     # Augmentacja danych (MVP): działa tylko dla train dataset.
-    AUGMENT_ENABLED: bool = False
+    AUGMENT_ENABLED: bool = True
 
     AUGMENT_GAIN_ENABLED: bool = True
     AUGMENT_GAIN_PROB: float = 0.5
@@ -74,3 +77,4 @@ cfg_paths = PathsConfig()
 cfg_audio = AudioConfig()
 cfg_train = TrainConfig()
 cfg_builder = BuilderConfig()
+cfg_logger = LoggerConfig()

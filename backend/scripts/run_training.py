@@ -1,8 +1,4 @@
-import os
 import torch
-
-# Optymalizacja ładowania kerneli dla kart z serii RTX 50, mozecie wyłączyć jak co
-os.environ["CUDA_MODULE_LOADING"] = "LAZY"
 
 from backend.config import cfg_paths, cfg_train
 from backend.data.loader import DataLoaderFactory

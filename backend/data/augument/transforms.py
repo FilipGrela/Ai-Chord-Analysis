@@ -19,7 +19,7 @@ class RandomGain:
         self.min_gain_db = min_gain_db
         self.max_gain_db = max_gain_db
 
-    def random_gain_change(self, audio):
+    def apply(self, audio):
         """Losowo wzmacnia lub osłabia sygnał audio, symulując różne poziomy głośności nagrań."""
 
         if self.prob > 0 and random.random() < self.prob:
@@ -39,7 +39,7 @@ class AdditiveGaussianNoise:
         self.snr_min_db = snr_min_db
         self.snr_max_db = snr_max_db
 
-    def apply_noise(self, audio):
+    def apply(self, audio):
         """Nakłada szum gaussowski na sygnał audio, symulując warunki nagrań z różnym poziomem szumu tła."""
 
         target_snr_db = random.uniform(self.snr_min_db, self.snr_max_db)
@@ -60,7 +60,7 @@ class AdditiveGaussianNoise:
 
 
 class RandomSpecMask:
-    def __init__(self, prob=0.2, max_time_masks=1, max_freq_masks=1, max_time_width=4, max_freq_width=8):
+    def __init__(self, prob=cfg_train.AUGMENT_SPECMASK_PROB, max_time_masks=cfg_train.AUGMENT_SPECMASK_MAX_TIME_MASKS, max_freq_masks=cfg_train.AUGMENT_SPECMASK_MAX_FREQ_MASKS, max_time_width=cfg_train.AUGMENT_SPECMASK_MAX_TIME_WIDTH, max_freq_width=cfg_train.AUGMENT_SPECMASK_MAX_FREQ_WIDTH):
         self.logger = logger.Logger(__name__)
         self.prob = prob
         self.max_time_masks = max_time_masks
@@ -68,7 +68,7 @@ class RandomSpecMask:
         self.max_time_width = max_time_width
         self.max_freq_width = max_freq_width
 
-    def apply_specmask(self, spec):
+    def apply(self, spec):
         """Losowo maskuje fragmenty spektrogramu w wymiarze czasu i częstotliwości. Wypełia je wartosćią średnią."""
         if random.random() >= self.prob:
             return spec
