@@ -29,34 +29,91 @@ class RandomGain:
         return audio
 
 class AdditiveGaussianNoise:
-    def __init__(self, snr_min_db=cfg_train.AUGMENT_NOISE_SNR_DB_MIN, snr_max_db=cfg_train.AUGMENT_NOISE_SNR_DB_MAX):
+    def __init__(
+            self,
+            prob = cfg_train.AUGMENT_NOISE_PROB,
+            snr_min_db=cfg_train.AUGMENT_NOISE_SNR_DB_MIN,
+            snr_max_db=cfg_train.AUGMENT_NOISE_SNR_DB_MAX):
+
         self.logger = logger.Logger(__name__)
+
+
+        if prob < 0 or prob > 1:
+            self.logger.error(f"Nieprawidłowe prawdopodobieństwo: {prob}. Ustawiam 0.0.")
+            prob = 0.0
 
         if snr_min_db > snr_max_db:
             self.logger.error(f"Min SNR > Max SNR [{snr_min_db} > {snr_max_db}]. Pomijam additive noise.")
             raise ValueError()
 
+        self.prob = prob
         self.snr_min_db = snr_min_db
         self.snr_max_db = snr_max_db
 
-    def apply(self, audio):
-        """Nakłada szum gaussowski na sygnał audio, symulując warunki nagrań z różnym poziomem szumu tła."""
+    def _add_noise_numpy_spec(self, spec: np.ndarray) -> np.ndarray:
+        # spec: 2D (T,F) or 3D (C,T,F)
+        target_snr_db = random.uniform(self.snr_min_db, self.snr_max_db)
+        snr_linear = 10 ** (target_snr_db / 10.0)
+
+        signal_power = np.mean(spec ** 2)
+        if signal_power <= 0:
+            return spec
+
+        noise_power = signal_power / snr_linear
+        noise = np.random.normal(0, np.sqrt(noise_power), size=spec.shape)
+        return spec + noise
+
+    def _add_noise_torch_spec(self, spec: "torch.Tensor") -> "torch.Tensor":
+        import torch as _torch
 
         target_snr_db = random.uniform(self.snr_min_db, self.snr_max_db)
-        snr_factor = 10 ** (target_snr_db / 20)
+        snr_linear = 10 ** (target_snr_db / 10.0)
 
-        signal_rms = np.sqrt(np.mean(audio ** 2))
+        # oblicz moc sygnału
+        signal_power = _torch.mean(spec.pow(2))
+        if signal_power <= 0:
+            return spec
 
-        noise = np.random.normal(0, 1, len(audio))
-        noise_rms = np.sqrt(np.mean(noise ** 2))
+        noise_power = signal_power / snr_linear
+        noise = _torch.randn_like(spec) * _torch.sqrt(noise_power)
+        return spec + noise
 
-        if noise_rms == 0:
-            return audio
+    def apply(self, x):
+        """Obsługuje:
+           - 1D numpy (audio) -> naturalne zachowanie
+           - 2D/3D numpy (spec) -> dodaje noise do spektrogramu
+           - torch.Tensor (spec) -> dodaje noise (zachowując typ tensor)
+        """
+        # losowość: stosuj zgodnie z prawdopodobieństwem
+        if self.prob <= 0 or random.random() >= self.prob:
+            return x
 
-        noise_scaled = (signal_rms / noise_rms) * (1 / snr_factor) * noise
+        # numpy audio (1D)
+        if isinstance(x, np.ndarray) and x.ndim == 1:
+            try:
+                return self._add_noise_numpy_audio(x)
+            except Exception:
+                return x
 
-        augmented_audio = audio + noise_scaled
-        return augmented_audio
+        # numpy spectrogram (2D lub 3D)
+        if isinstance(x, np.ndarray) and x.ndim >= 2:
+            try:
+                return self._add_noise_numpy_spec(x)
+            except Exception:
+                return x
+
+        # torch Tensor (np. (1, T, F) lub (T, F))
+        import torch
+        if isinstance(x, torch.Tensor):
+            try:
+                # Operujemy na kopii, żeby nie modyfikować zerowej próbki w pamięci
+                out = x.clone()
+                return self._add_noise_torch_spec(out)
+            except Exception:
+                return x
+
+        # fallback: nic nie robimy
+        return x
 
 
 class RandomSpecMask:

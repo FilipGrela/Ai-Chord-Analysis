@@ -2,6 +2,7 @@ from typing import List
 import torch
 
 from backend.data.augument.transforms import RandomSpecMask
+from backend.data.augument.transforms import AdditiveGaussianNoise
 from backend.logger import logger as log
 
 
@@ -37,6 +38,13 @@ def build_train_augment_pipeline(train_cfg) -> AugmentPipeline | None:
         logger.info(f"  - Max Time Width: {train_cfg.AUGMENT_SPECMASK_MAX_TIME_WIDTH}")
         logger.info(f"  - Max Freq Width: {train_cfg.AUGMENT_SPECMASK_MAX_FREQ_WIDTH}")
         transforms.append(RandomSpecMask())
+
+    if getattr(train_cfg, "AUGMENT_NOISE_ENABLED", False):
+        logger.info("Włączono augmentację: AdditiveGaussianNoise z parametrami: ")
+        logger.info(f"  - Prob: {train_cfg.AUGMENT_NOISE_PROB}")
+        logger.info(f"  - SNR dB Min: {train_cfg.AUGMENT_NOISE_SNR_DB_MIN}")
+        logger.info(f"  - SNR dB Max: {train_cfg.AUGMENT_NOISE_SNR_DB_MAX}")
+        transforms.append(AdditiveGaussianNoise())
 
     if not transforms:
         return None

@@ -144,7 +144,6 @@ class DatasetBuilder:
                               hop_size_ms=self.audio_cfg.HOP_SIZE_MS, seq_len=self.audio_cfg.SEQ_LEN)
 
         results, errors = [], []
-        counter = 0
         
         # Inicjalizacja puli procesów (robimy to raz dla całej operacji, aby oszczędzić zasoby)
         with ProcessPoolExecutor(max_workers=safe_workers) as executor:
@@ -168,9 +167,6 @@ class DatasetBuilder:
                 # Pasek postępu poziomu 1 (Utwory). 
                 # 'leave=False' sprawia, że po ukończeniu albumu ten pasek zniknie i zrobi miejsce dla kolejnego.
                 for success, msg in tqdm(track_results, total=len(tracks), desc=f"Przetwarzanie: {album_name}", position=1, leave=False):
-                    counter += 1
-                    if counter >= 10:
-                        break
                     if success:
                         results.append(msg)
                     else:

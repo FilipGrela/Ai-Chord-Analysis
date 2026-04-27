@@ -14,7 +14,7 @@ class PathsConfig:
     RAW_DATA: str = os.path.join(BASE_DIR, "raw_dataset")
     
     PROCESSED_DATA: str = os.path.join(BASE_DIR, "out", "full_dataset")
-    MODEL_SAVE_PATH: str = os.path.join(BASE_DIR, "out", "best_crnn_model.pth")
+    MODEL_SAVE_PATH: str = os.path.join(BASE_DIR, "out", "model.pth")
     
     TEST_OUTPUT: str = os.path.join(BASE_DIR, "out", "dataset_output")
 
@@ -44,28 +44,31 @@ class AudioConfig:
 class TrainConfig:
     BATCH_SIZE: int = 64
     EPOCHS: int = 30
-    LEARNING_RATE: float = 0.0001
-    PATIENCE: int = 5
+    LEARNING_RATE: float = 0.00005
+    PATIENCE: int = 6
 
     # Augmentacja danych (MVP): działa tylko dla train dataset.
-    AUGMENT_ENABLED: bool = True
+    AUGMENT_ENABLED: bool = True  # Glowny przelacznik augmentacji (True = wlaczona)
 
-    AUGMENT_GAIN_ENABLED: bool = True
-    AUGMENT_GAIN_PROB: float = 0.5
-    AUGMENT_GAIN_DB_MIN: float = -6.0
-    AUGMENT_GAIN_DB_MAX: float = 6.0
+    # Random gain (zmiana glosnosci)
+    AUGMENT_GAIN_ENABLED: bool = True  # Czy uzywac tej augmentacji
+    AUGMENT_GAIN_PROB: float = 0.5  # Szansa na zastosowanie dla probki (0-1)
+    AUGMENT_GAIN_DB_MIN: float = -6.0  # Minimalna zmiana glosnosci [dB]
+    AUGMENT_GAIN_DB_MAX: float = 6.0  # Maksymalna zmiana glosnosci [dB]
 
-    AUGMENT_NOISE_ENABLED: bool = True
-    AUGMENT_NOISE_PROB: float = 0.4
-    AUGMENT_NOISE_SNR_DB_MIN: float = 20.0
-    AUGMENT_NOISE_SNR_DB_MAX: float = 35.0
+    # Additive noise (dodawanie szumu)
+    AUGMENT_NOISE_ENABLED: bool = False  # Czy uzywac tej augmentacji
+    AUGMENT_NOISE_PROB: float = 0.25  # Szansa na zastosowanie dla probki (0-1)
+    AUGMENT_NOISE_SNR_DB_MIN: float = 20.0  # Min SNR [dB], nizsze = wiecej szumu
+    AUGMENT_NOISE_SNR_DB_MAX: float = 35.0  # Max SNR [dB], wyzsze = mniej szumu
 
-    AUGMENT_SPECMASK_ENABLED: bool = True
-    AUGMENT_SPECMASK_PROB: float = 0.2
-    AUGMENT_SPECMASK_MAX_TIME_MASKS: int = 1
-    AUGMENT_SPECMASK_MAX_FREQ_MASKS: int = 1
-    AUGMENT_SPECMASK_MAX_TIME_WIDTH: int = 4
-    AUGMENT_SPECMASK_MAX_FREQ_WIDTH: int = 8
+    # SpecMask (maskowanie fragmentow spektrogramu)
+    AUGMENT_SPECMASK_ENABLED: bool = True  # Czy uzywac tej augmentacji
+    AUGMENT_SPECMASK_PROB: float = 0.15  # Szansa na zastosowanie dla probki (0-1)
+    AUGMENT_SPECMASK_MAX_TIME_MASKS: int = 1  # Maks. liczba masek w osi czasu
+    AUGMENT_SPECMASK_MAX_FREQ_MASKS: int = 1  # Maks. liczba masek w osi czestotliwosci
+    AUGMENT_SPECMASK_MAX_TIME_WIDTH: int = 4  # Maks. szerokosc jednej maski czasowej
+    AUGMENT_SPECMASK_MAX_FREQ_WIDTH: int = 6  # Maks. szerokosc jednej maski czestotliwosciowej
 
 @dataclass
 class BuilderConfig:
