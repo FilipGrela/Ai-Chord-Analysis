@@ -33,7 +33,8 @@ Wszystkie komendy uruchamiaj z głównego folderu projektu:
    ```bash
    python -m backend.scripts.run_build_dataset
    ```
-   **Augumentacja danych:** Możesz dodatkowo wygenerować transpozycje offline dla zwiększenia różnorodności danych. (--semitones opcjonalne)
+   
+   **Augmentacja danych:** Możesz dodatkowo wygenerować transpozycje offline dla zwiększenia różnorodności danych. (--semitones opcjonalne)
    ```bash
    python -m backend.scripts.run_transpose_offline --semitones -6 -5 -4 -3 -2 -1 1 2 3 4 5 6
    ```

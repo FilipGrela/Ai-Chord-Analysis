@@ -5,7 +5,7 @@ import numpy as np
 from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import train_test_split
 from backend.logger.logger import Logger
-from backend.data.augument.pipeline import build_train_augment_pipeline
+from backend.data.augment.pipeline import build_train_augment_pipeline
 from backend.config import cfg_train
 
 logger = Logger(__name__)

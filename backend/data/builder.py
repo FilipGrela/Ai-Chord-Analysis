@@ -9,7 +9,7 @@ from tqdm import tqdm
 from backend.config import cfg_paths, cfg_audio, cfg_builder
 from backend.dsp.spectrograms import AudioProcessor
 from backend.data.parser import ChordLabelParser
-from backend.data.augument.label_ops import ChordTranspose
+from backend.data.augment.label_ops import ChordTranspose
 from backend.logger.logger import Logger
 
 logger = Logger(__name__)
@@ -164,12 +164,12 @@ class DatasetBuilder:
         """
         if semitones == 0:
             return spec
-        
+
         bins_to_shift = semitones % 12  # Zawijamy do zakresu ±12 półtonów (1 oktawa)
-        
+
         # Przesunięcie wzdłuż osi binów (częstotliwości)
         shifted = np.roll(spec, bins_to_shift, axis=0)
-        
+
         # Zerowanie przesunętych binów
         if bins_to_shift > 0:
             shifted[:bins_to_shift, :] = 0  # Zeruj początek
@@ -204,7 +204,8 @@ class DatasetBuilder:
         X_transposed = np.array(X_transposed, dtype=np.float32)
         
         # Dla etykiet: transpozycja etykiet akordów
-        chord_names = [list(cls.CHORD_TO_INT.keys())[idx] for idx in y]
+        int_to_chord = tuple(cls.CHORD_TO_INT.keys())
+        chord_names = [int_to_chord[idx] for idx in y]
         transposed_chords = [ChordTranspose.transpose_chord_label(chord, semitones) for chord in chord_names]
         y_transposed = np.array([cls.CHORD_TO_INT[chord] for chord in transposed_chords], dtype=np.int64)
         

@@ -39,7 +39,7 @@ class ChordCRNN(nn.Module):
     def __init__(
         self,
         num_classes: int = cfg_model.NUM_CLASSES,
-        dropout_rate: float = cfg_model.DROPOUT,
+        dropout_rate: float = cfg_model.DROPOUT_RATE,
         rnn_num_layers: int = cfg_model.RNN_NUM_LAYERS,
         rnn_hidden_size: int = cfg_model.RNN_HIDDEN_SIZE,
         cnn_channels: tuple[int, int, int] = cfg_model.CNN_CHANNELS,
