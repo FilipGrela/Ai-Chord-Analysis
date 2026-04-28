@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import os
 import re
+from pathlib import Path
 from backend.config import cfg_paths, cfg_audio
 from backend.models.crnn import ChordCRNN
 from backend.dsp.spectrograms import AudioProcessor
@@ -32,6 +33,27 @@ class ChordInferenceEngine:
                 layer_ids.append(int(match.group(1)))
         return (max(layer_ids) + 1) if layer_ids else 2
 
+    @staticmethod
+    def _resolve_model_path(load_path: str) -> str:
+        if os.path.exists(load_path):
+            return load_path
+
+        candidate_dir = Path(load_path).parent
+        pth_files = sorted(
+            candidate_dir.glob("*.pth"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        if pth_files:
+            logger.warning(
+                f"Nie znaleziono dokładnego pliku modelu: {load_path}. Używam najnowszego checkpointu: {pth_files[0]}"
+            )
+            return str(pth_files[0])
+
+        raise FileNotFoundError(
+            f"Nie znaleziono pliku modelu: {load_path}. Wytrenuj go najpierw!"
+        )
+
     def __init__(
         self, model_path: str | None = None, device: torch.device | None = None
     ):
@@ -39,12 +61,7 @@ class ChordInferenceEngine:
             "cuda" if torch.cuda.is_available() else "cpu"
         )
         self.processor = AudioProcessor()
-        load_path = model_path or cfg_paths.MODEL_SAVE_PATH
-
-        if not os.path.exists(load_path):
-            raise FileNotFoundError(
-                f"Nie znaleziono pliku modelu: {load_path}. Wytrenuj go najpierw!"
-            )
+        load_path = self._resolve_model_path(model_path or cfg_paths.MODEL_SAVE_PATH)
 
         checkpoint = torch.load(load_path, map_location=self.device)
         state_dict = self._extract_state_dict(checkpoint)
@@ -77,6 +94,9 @@ class ChordInferenceEngine:
             center_idx = start_idx + (seq_len // 2)
             time_sec = center_idx * (cfg_audio.HOP_SIZE_MS / 1000.0)
             timestamps.append(time_sec)
+
+        if not X_sequences:
+            return np.empty((0, seq_len, num_bins), dtype=np.float32), timestamps
 
         return np.array(X_sequences), timestamps
 
@@ -123,6 +143,12 @@ class ChordInferenceEngine:
 
         # 2. Pocięcie na sekwencje
         X, timestamps = self._create_inference_sequences(cqt_matrix)
+
+        if X.shape[0] == 0:
+            logger.warning(
+                "Plik audio jest zbyt krótki, aby utworzyć sekwencje wejściowe dla modelu. Zwracam pusty wynik."
+            )
+            return []
 
         # 3. Przygotowanie tensorów pod Conv2D: (Batch, 1, Time, Freq)
         X_tensor = torch.tensor(X, dtype=torch.float32).unsqueeze(1).to(self.device)

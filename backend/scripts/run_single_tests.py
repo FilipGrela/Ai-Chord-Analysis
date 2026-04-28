@@ -54,11 +54,12 @@ def run_single_interactive(processor: AudioProcessor, audio_data):
     apply_whitening = False
     apply_denoise = False
     apply_short_noises = False
-    apply_hpss = False
+    apply_hpss = True
+    method = 'cqt'
     
     spectrogram = processor.generate_spectrogram(
         audio_data,
-        method='cqt',
+        method=method,
         apply_smoothing=apply_smoothing,
         apply_whitening=apply_whitening,
         apply_denoise=apply_denoise,
@@ -70,7 +71,8 @@ def run_single_interactive(processor: AudioProcessor, audio_data):
     chroma = processor.create_chromagram(spectrogram, threshold_percent=10)
     
     custom_text = (f"Smoothing: {apply_smoothing} | Short noises: {apply_short_noises}\n"
-                   f"Whitening: {apply_whitening} | Denoise: {apply_denoise}")
+                   f"Whitening: {apply_whitening} | Denoise: {apply_denoise}\n"
+                   f"HPSS: {apply_hpss} | method: {method}")
     
     print("Wyświetlam Chromagram (zamknij okno, aby przejść dalej)...")
     SpectrogramVisualizer.plot_chromagram(chroma)

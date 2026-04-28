@@ -1,7 +1,21 @@
 import logging
 import colorlog
 import sys
+from backend.config import cfg_logger
 from typing import Any
+from tqdm import tqdm
+
+
+class TqdmLoggingHandler(logging.StreamHandler):
+    """Handler, który wypisuje logi przez tqdm.write, żeby nie psuć pasków postępu."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            msg = self.format(record)
+            tqdm.write(msg, file=sys.stdout)
+            self.flush()
+        except Exception:
+            self.handleError(record)
 
 class Logger:
     """
@@ -10,13 +24,11 @@ class Logger:
     def __init__(self, nazwa_klasy: str):
         self.logger = logging.getLogger(nazwa_klasy)
         self.logger.setLevel(logging.DEBUG) # Nasłuchujemy wszystkich zdarzeń od poziomu DEBUG wzwyż
-        
+        self.logger.propagate = False
+
         if not self.logger.handlers:
             # Ustawienie wysyłania logów do konsoli (standardowe wyjście)
-            console_handler = logging.StreamHandler(sys.stdout)
-            
-
-
+            console_handler = TqdmLoggingHandler()
             formatter = colorlog.ColoredFormatter(
                 fmt="%(log_color)s%(asctime)s | %(name)s | %(levelname)s | %(message)s",
                 datefmt='%Y-%m-%d %H:%M:%S',
@@ -43,6 +55,9 @@ class Logger:
         self.logger.error(wiadomosc)
         
     def debug(self, wiadomosc: str):
+        if not cfg_logger.DEBUG:
+            return
+
         self.logger.debug(wiadomosc)
 
     def infoModelTraining(

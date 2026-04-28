@@ -1,6 +1,8 @@
-import os
+from pathlib import Path
 import torch
 import torch.optim as optim
+import shutil
+from datetime import datetime
 from tqdm import tqdm
 from backend.config import cfg_train, cfg_paths
 from backend.logger.logger import Logger
@@ -24,7 +26,7 @@ class Trainer:
         self.optimizer = optim.AdamW(
             self.model.parameters(), 
             lr=self.config.LEARNING_RATE, 
-            weight_decay=1e-4
+            weight_decay=5e-4
         )
         
         # Scheduler zmniejszający LR, gdy Val Loss przestaje spadać
@@ -40,11 +42,35 @@ class Trainer:
             f"Val Loss: {val_loss:.4f} (Acc: {val_acc:.2f}%)"
         )
 
+    @staticmethod
+    def _is_better_checkpoint(
+        candidate_val_acc: float,
+        candidate_val_loss: float,
+        best_val_acc: float,
+        best_val_loss: float,
+    ) -> bool:
+        """
+        Określa, czy nowy checkpoint jest lepszy od aktualnie najlepszego.
+
+        Priorytetem jest skuteczność (val_acc). Dopiero przy remisie patrzymy na val_loss.
+        Dzięki temu model z niższą skutecznością nie nadpisze lepszego modelu tylko dlatego,
+        że ma minimalnie lepszy loss.
+        """
+        if candidate_val_acc > best_val_acc:
+            return True
+
+        if candidate_val_acc == best_val_acc and candidate_val_loss < best_val_loss:
+            return True
+
+        return False
+
     def train(self):
         logger.info(f"Rozpoczęcie treningu na urządzeniu: {self.device}")
         best_val_loss = float('inf')
+        best_val_acc = float('-inf')
         epochs_no_improve = 0
-        
+        best_model_path: Path | None = None
+
         for epoch in range(1, self.config.EPOCHS + 1):
             # ================= FAZA TRENINGU =================
             self.model.train()
@@ -96,14 +122,42 @@ class Trainer:
                 logger.info(f"-> Scheduler zmniejszył Learning Rate do: {self.optimizer.param_groups[0]['lr']}")
                 
             # Model Checkpointing i Early Stopping
-            if val_loss < best_val_loss:
+            if self._is_better_checkpoint(val_acc, val_loss, best_val_acc, best_val_loss):
                 best_val_loss = val_loss
+                best_val_acc = val_acc
                 epochs_no_improve = 0
-                torch.save(self.model.state_dict(), self.paths.MODEL_SAVE_PATH)
-                logger.info(f"-> Zapisano nowy, lepszy model: {os.path.basename(self.paths.MODEL_SAVE_PATH)}")
+
+                # Generowanie nazwy z datą i skutecznością
+                date_str = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+                base_path = Path(self.paths.MODEL_SAVE_PATH)
+                dir_path = base_path.parent
+                extension = base_path.suffix
+                filename = base_path.stem
+
+                model_name = f"{filename}_{date_str}_acc{val_acc:.2f}{extension}"
+                model_path = dir_path / model_name
+
+                torch.save(self.model.state_dict(), str(model_path))
+                shutil.copy2(model_path, base_path)
+
+                if best_model_path and best_model_path != model_path and best_model_path.exists():
+                    try:
+                        best_model_path.unlink()
+                        logger.info(f"-> Usunięto poprzedni model: {best_model_path.name}")
+                    except OSError as exc:
+                        logger.warning(f"-> Nie udało się usunąć poprzedniego modelu {best_model_path}: {exc}")
+
+                best_model_path = model_path
+                logger.info(
+                    f"-> Zapisano nowy, lepszy model: {model_name} | "
+                    f"Val Acc: {val_acc:.2f}% | Val Loss: {val_loss:.4f}"
+                )
             else:
                 epochs_no_improve += 1
-                logger.warning(f"-> Brak poprawy od {epochs_no_improve} epok.")
+                logger.warning(
+                    f"-> Brak poprawy od {epochs_no_improve} epok. "
+                    f"Aktualny model nie został nadpisany (Val Acc: {val_acc:.2f}%, Val Loss: {val_loss:.4f})."
+                )
                 if epochs_no_improve >= self.config.PATIENCE:
                     logger.warning("Early Stopping: Przerwano trening by uniknąć przeuczenia.")
                     break

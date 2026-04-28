@@ -13,7 +13,7 @@ def main():
     logger.info("--- Inicjalizacja Modułu AI-Chord-Analysis ---")
     
     try:
-        # Silnik automatycznie załaduje best_crnn_model.pth z folderu 'out'
+        # Silnik automatycznie załaduje model.pth z folderu 'out'
         engine = ChordInferenceEngine()
     except FileNotFoundError as e:
         logger.error(f"BŁĄD: {e}")
