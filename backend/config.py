@@ -39,13 +39,21 @@ class AudioConfig:
     APPLY_SMOOTHING: bool = False
     APPLY_HPSS: bool = False
 
+@dataclass
+class ModelConfig:
+    NUM_CLASSES: int = 25
+    DROPOUT_RATE: float = 0.25
+    RNN_NUM_LAYERS: int = 4
+    RNN_HIDDEN_SIZE: int = 192
+    CNN_CHANNELS: tuple = (32, 64, 128)
+    N_BINS: int = 84
 
 @dataclass
 class TrainConfig:
     BATCH_SIZE: int = 64
-    EPOCHS: int = 30
-    LEARNING_RATE: float = 0.00005
-    PATIENCE: int = 6
+    EPOCHS: int = 50
+    LEARNING_RATE: float = 1e-4
+    PATIENCE: int = 5
 
     # Augmentacja danych (MVP): działa tylko dla train dataset.
     AUGMENT_ENABLED: bool = True  # Glowny przelacznik augmentacji (True = wlaczona)
@@ -64,11 +72,17 @@ class TrainConfig:
 
     # SpecMask (maskowanie fragmentow spektrogramu)
     AUGMENT_SPECMASK_ENABLED: bool = True  # Czy uzywac tej augmentacji
-    AUGMENT_SPECMASK_PROB: float = 0.15  # Szansa na zastosowanie dla probki (0-1)
+    AUGMENT_SPECMASK_PROB: float = 0.20  # Szansa na zastosowanie dla probki (0-1)
     AUGMENT_SPECMASK_MAX_TIME_MASKS: int = 1  # Maks. liczba masek w osi czasu
     AUGMENT_SPECMASK_MAX_FREQ_MASKS: int = 1  # Maks. liczba masek w osi czestotliwosci
-    AUGMENT_SPECMASK_MAX_TIME_WIDTH: int = 4  # Maks. szerokosc jednej maski czasowej
-    AUGMENT_SPECMASK_MAX_FREQ_WIDTH: int = 6  # Maks. szerokosc jednej maski czestotliwosciowej
+    AUGMENT_SPECMASK_MAX_TIME_WIDTH: int = 3  # Maks. szerokosc jednej maski czasowej
+    AUGMENT_SPECMASK_MAX_FREQ_WIDTH: int = 5  # Maks. szerokosc jednej maski czestotliwosciowej
+
+    # Transpose (transponowanie spektrogramu - zmiana tonacji)
+    AUGMENT_TRANSPOSE_ENABLED: bool = False  # Czy uzywac tej augmentacji (online)
+    AUGMENT_TRANSPOSE_PROB: float = 0.4  # Szansa na zastosowanie dla probki (0-1)
+    AUGMENT_TRANSPOSE_MIN: int = -6  # Min liczba poltonow do transponowania
+    AUGMENT_TRANSPOSE_MAX: int = 6  # Max liczba poltonow do transponowania
 
 @dataclass
 class BuilderConfig:
@@ -78,6 +92,7 @@ class BuilderConfig:
 # Instancje konfiguracji do importowania w całym projekcie
 cfg_paths = PathsConfig()
 cfg_audio = AudioConfig()
+cfg_model = ModelConfig()
 cfg_train = TrainConfig()
 cfg_builder = BuilderConfig()
 cfg_logger = LoggerConfig()

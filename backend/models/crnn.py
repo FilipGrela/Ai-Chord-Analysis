@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from backend.config import cfg_model
 
 
 class AttentionBlock(nn.Module):
@@ -37,12 +38,12 @@ class ChordCRNN(nn.Module):
 
     def __init__(
         self,
-        num_classes: int = 25,
-        dropout_rate: float = 0.30,
-        rnn_num_layers: int = 4,
-        rnn_hidden_size: int = 192,
-        cnn_channels: tuple[int, int, int] = (24, 48, 96),
-        n_bins: int = 84,
+        num_classes: int = cfg_model.NUM_CLASSES,
+        dropout_rate: float = cfg_model.DROPOUT,
+        rnn_num_layers: int = cfg_model.RNN_NUM_LAYERS,
+        rnn_hidden_size: int = cfg_model.RNN_HIDDEN_SIZE,
+        cnn_channels: tuple[int, int, int] = cfg_model.CNN_CHANNELS,
+        n_bins: int = cfg_model.N_BINS,
     ):
         super(ChordCRNN, self).__init__()
 
@@ -83,7 +84,7 @@ class ChordCRNN(nn.Module):
 
         # --- NOWOŚĆ: Blok Attention ---
         # Wejście: 2 * hidden_size (wynik bidirectional GRU)
-        self.attention_head = AttentionBlock(2 * rnn_hidden_size, hidden_dim=192)
+        self.attention_head = AttentionBlock(2 * rnn_hidden_size, hidden_dim=rnn_hidden_size)
 
         self.dropout = nn.Dropout(p=dropout_rate)
         self.fc = nn.Linear(2 * rnn_hidden_size, num_classes)
@@ -97,7 +98,7 @@ class ChordCRNN(nn.Module):
         x = x.transpose(1, 2).contiguous()
         x = x.view(B, T, C * F)
 
-        # 3. GRU
+        # 3. GRU`
         x, _ = self.rnn(x)  # x: (B, T, 256)
 
         # 4. ZAMIANA: Zamiast torch.mean(x, dim=1), używamy Attention

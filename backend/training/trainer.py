@@ -1,6 +1,7 @@
 from pathlib import Path
 import torch
 import torch.optim as optim
+import shutil
 from datetime import datetime
 from tqdm import tqdm
 from backend.config import cfg_train, cfg_paths
@@ -25,7 +26,7 @@ class Trainer:
         self.optimizer = optim.AdamW(
             self.model.parameters(), 
             lr=self.config.LEARNING_RATE, 
-            weight_decay=1e-4
+            weight_decay=5e-4
         )
         
         # Scheduler zmniejszający LR, gdy Val Loss przestaje spadać
@@ -113,6 +114,7 @@ class Trainer:
                 model_path = dir_path / model_name
 
                 torch.save(self.model.state_dict(), str(model_path))
+                shutil.copy2(model_path, base_path)
 
                 if best_model_path and best_model_path != model_path and best_model_path.exists():
                     try:

@@ -9,6 +9,7 @@ from tqdm import tqdm
 from backend.config import cfg_paths, cfg_audio, cfg_builder
 from backend.dsp.spectrograms import AudioProcessor
 from backend.data.parser import ChordLabelParser
+from backend.data.augument.label_ops import ChordTranspose
 from backend.logger.logger import Logger
 
 logger = Logger(__name__)
@@ -75,6 +76,13 @@ class DatasetBuilder:
 
             X_sequences.append(patch_t)
             y_labels.append(label)
+
+        if not X_sequences:
+            return (
+                np.empty((0, seq_len, num_bins), dtype=np.float32),
+                np.empty((0,), dtype=np.int64),
+            )
+
         return np.array(X_sequences), np.array(y_labels)
 
     @staticmethod
@@ -142,6 +150,128 @@ class DatasetBuilder:
         except Exception as e:
             return False, f"Błąd krytyczny w {folder_name}: {str(e)}"
 
+    @staticmethod
+    def _transpose_spectrogram(spec: np.ndarray, semitones: int) -> np.ndarray:
+        """
+        Transponuje spektrogram CQT poprzez przesunięcie osi częstotliwości.
+        
+        Args:
+            spec: np.ndarray - spektrogram o wymiarach (num_bins, num_frames)
+            semitones: int - liczba półtonów do transponowania (dodatnia lub ujemna)
+        
+        Returns:
+            np.ndarray - transponowany spektrogram
+        """
+        if semitones == 0:
+            return spec
+        
+        bins_to_shift = semitones % 12  # Zawijamy do zakresu ±12 półtonów (1 oktawa)
+        
+        # Przesunięcie wzdłuż osi binów (częstotliwości)
+        shifted = np.roll(spec, bins_to_shift, axis=0)
+        
+        # Zerowanie przesunętych binów
+        if bins_to_shift > 0:
+            shifted[:bins_to_shift, :] = 0  # Zeruj początek
+        elif bins_to_shift < 0:
+            shifted[bins_to_shift:, :] = 0  # Zeruj koniec
+        
+        return shifted
+
+    @classmethod
+    def _transpose_sequences(cls, X: np.ndarray, y: np.ndarray, semitones: int) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Transpozycja sekwencji spektrogramu (X) i ich etykiet (y).
+        
+        Args:
+            X: np.ndarray - sekwencje spektrogramu (num_sequences, seq_len, num_bins)
+            y: np.ndarray - etykiety (num_sequences,) jako indeksy do CHORD_TO_INT
+            semitones: int - liczba półtonów
+        
+        Returns:
+            Tuple[np.ndarray, np.ndarray] - (transponowane X, transponowane y)
+        """
+        if semitones == 0:
+            return X, y
+        
+        X_transposed = []
+        for patch in X:
+            # patch: (seq_len, num_bins)
+            # Transponuj każdy patch poprzez transpozycję spektrogramu
+            transposed_patch = cls._transpose_spectrogram(patch.T, semitones).T
+            X_transposed.append(transposed_patch)
+        
+        X_transposed = np.array(X_transposed, dtype=np.float32)
+        
+        # Dla etykiet: transpozycja etykiet akordów
+        chord_names = [list(cls.CHORD_TO_INT.keys())[idx] for idx in y]
+        transposed_chords = [ChordTranspose.transpose_chord_label(chord, semitones) for chord in chord_names]
+        y_transposed = np.array([cls.CHORD_TO_INT[chord] for chord in transposed_chords], dtype=np.int64)
+        
+        return X_transposed, y_transposed
+
+    def apply_offline_transposition(self, semitones_list: list[int] | None = None) -> None:
+        """
+        Aplikuj offline transpozycję do już wygenerowanego datasetu.
+        Generuje dodatkowe pliki z transpozycjonowanymi danymi.
+        
+        Args:
+            semitones_list: list[int] - lista półtonów, dla których generować dane (np. [-2, -1, 1, 2])
+                                        Jeśli None, nic się nie robi.
+        """
+        if semitones_list is None or len(semitones_list) == 0:
+            logger.info("Offline transpozycja wyłączona.")
+            return
+        
+        # Filtruj 0 z listy (nie ma sensu)
+        semitones_list = [s for s in semitones_list if s != 0]
+        
+        if len(semitones_list) == 0:
+            logger.info("Offline transpozycja wyłączona (brak półtonów do zastosowania).")
+            return
+        
+        logger.info(f"Rozpoczynam offline transpozycję dla {len(semitones_list)} wariantów: {semitones_list}")
+        
+        # Znajdź wszystkie pliki X/y w PROCESSED_DATA
+        x_files = sorted(glob.glob(os.path.join(self.paths.PROCESSED_DATA, "*_X.npy")))
+        total_files = len(x_files)
+        
+        if total_files == 0:
+            logger.warning(f"Brak danych do transpozycji w {self.paths.PROCESSED_DATA}")
+            return
+        
+        with tqdm(total=total_files * len(semitones_list), desc="Transpozycja offline", leave=True) as pbar:
+            for x_path in x_files:
+                y_path = x_path.replace("_X.npy", "_y.npy")
+                
+                if not os.path.exists(y_path):
+                    pbar.update(len(semitones_list))
+                    continue
+                
+                try:
+                    X = np.load(x_path, allow_pickle=False)
+                    y = np.load(y_path, allow_pickle=False)
+                    
+                    base_name = os.path.basename(x_path).replace("_X.npy", "")
+                    
+                    for semitones in semitones_list:
+                        X_transposed, y_transposed = self._transpose_sequences(X, y, semitones)
+                        
+                        # Zapisz z prefiksem do nazwy
+                        suffix = f"_T{semitones:+d}"  # Np. _T-2, _T+3
+                        x_out = os.path.join(self.paths.PROCESSED_DATA, f"{base_name}{suffix}_X.npy")
+                        y_out = os.path.join(self.paths.PROCESSED_DATA, f"{base_name}{suffix}_y.npy")
+                        
+                        np.save(x_out, X_transposed)
+                        np.save(y_out, y_transposed)
+                        pbar.update(1)
+                
+                except Exception as e:
+                    logger.error(f"Błąd transpozycji {x_path}: {e}")
+                    pbar.update(len(semitones_list))
+        
+        logger.info("Offline transpozycja ukończona.")
+
     def build_entire_dataset(self):
         # Tworzy folder na output, jeżeli wcześniej nie istnieje.
         if not os.path.exists(self.paths.PROCESSED_DATA):
@@ -200,19 +330,13 @@ class DatasetBuilder:
                     continue
 
                 logger.info(f"Album {album_name}: do przetworzenia {len(pending_tracks)} utworów, pominięto {len(tracks) - len(pending_tracks)}.")
-                overall_bar.set_description_str(f"Budowanie datasetu | {album_name}")
-                overall_bar.set_postfix_str(f"pozostało {overall_bar.total - overall_bar.n} utworów")
-
-                futures = [executor.submit(worker_func, track) for track in pending_tracks]
+                futures = [executor.submit(worker_func, track) for track in pending_tracks]  # type: ignore[arg-type]
                 processed_in_album = 0
 
                 for future in as_completed(futures):
                     success, msg = future.result()
                     processed_in_album += 1
                     overall_bar.update(1)
-                    overall_bar.set_postfix_str(
-                        f"album {processed_in_album}/{len(pending_tracks)} | pozostało {overall_bar.total - overall_bar.n}"
-                    )
                     if success:
                         results.append(msg)
                     else:

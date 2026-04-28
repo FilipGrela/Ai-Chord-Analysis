@@ -2,6 +2,7 @@ from backend.logger import logger
 from backend.config import cfg_train
 import numpy as np
 import random
+from backend.data.augument.label_ops import ChordTranspose
 
 class RandomGain:
     def __init__(self, prob=cfg_train.AUGMENT_GAIN_PROB, min_gain_db=cfg_train.AUGMENT_GAIN_DB_MIN, max_gain_db=cfg_train.AUGMENT_GAIN_DB_MAX):
@@ -166,3 +167,115 @@ class RandomSpecMask:
                 spec[:, start:start + width] = mask_value
 
         return spec
+
+
+class RandomTranspose:
+    """Losowo transpozycjonuje spektrogram CQT poprzez przesunięcie danych wzdłuż osi częstotliwości."""
+
+    def __init__(
+        self,
+        prob: float = getattr(cfg_train, "AUGMENT_TRANSPOSE_PROB", 0.0),
+        min_semitones: int = getattr(cfg_train, "AUGMENT_TRANSPOSE_MIN", -6),
+        max_semitones: int = getattr(cfg_train, "AUGMENT_TRANSPOSE_MAX", 6),
+    ):
+        self.logger = logger.Logger(__name__)
+
+        if prob < 0 or prob > 1:
+            self.logger.error(f"Nieprawidłowe prawdopodobieństwo: {prob}. Ustawiam 0.0.")
+            prob = 0.0
+
+        if min_semitones > max_semitones:
+            self.logger.error(
+                f"Min semitones > Max semitones [{min_semitones} > {max_semitones}]. Pomijam transpose."
+            )
+            raise ValueError()
+
+        self.prob = prob
+        self.min_semitones = min_semitones
+        self.max_semitones = max_semitones
+
+    def _transpose_numpy_spec(self, spec: np.ndarray, semitones: int) -> np.ndarray:
+        """Transpose spectral data (2D or 3D) by shifting frequency axis."""
+        # spec: (T, F) or (C, T, F)
+        # Przesunięcie w dziedzinie częstotliwości, ostatnia oś
+        bins_to_shift = semitones
+
+        if spec.ndim == 2:  # (T, F)
+            shifted = np.roll(spec, bins_to_shift, axis=1)
+            # Zeruj przetoczone dane (części, które weszły z drugiej strony)
+            if bins_to_shift > 0:
+                shifted[:, :bins_to_shift] = 0  # Wypełnij początek zerami
+            elif bins_to_shift < 0:
+                shifted[:, bins_to_shift:] = 0  # Wypełnij koniec zerami
+            return shifted
+
+        elif spec.ndim == 3:  # (C, T, F)
+            shifted = np.roll(spec, bins_to_shift, axis=2)
+            if bins_to_shift > 0:
+                shifted[:, :, :bins_to_shift] = 0
+            elif bins_to_shift < 0:
+                shifted[:, :, bins_to_shift:] = 0
+            return shifted
+
+        return spec
+
+    def _transpose_torch_spec(self, spec: "torch.Tensor", semitones: int) -> "torch.Tensor":
+        """Transpose torch tensor spectral data."""
+        import torch as _torch
+
+        bins_to_shift = semitones
+
+        if spec.ndim == 2:  # (T, F)
+            shifted = _torch.roll(spec, bins_to_shift, dims=1)
+            if bins_to_shift > 0:
+                shifted[:, :bins_to_shift] = 0
+            elif bins_to_shift < 0:
+                shifted[:, bins_to_shift:] = 0
+            return shifted
+
+        elif spec.ndim == 3:  # (C, T, F)
+            shifted = _torch.roll(spec, bins_to_shift, dims=2)
+            if bins_to_shift > 0:
+                shifted[:, :, :bins_to_shift] = 0
+            elif bins_to_shift < 0:
+                shifted[:, :, bins_to_shift:] = 0
+            return shifted
+
+        return spec
+
+    def apply(self, x):
+        """
+        Transpose spectrogram by shifting frequency axis.
+        Supports:
+        - 2D numpy (T, F) -> transpose
+        - 3D numpy (C, T, F) -> transpose
+        - torch.Tensor -> transpose
+        """
+        if self.prob <= 0 or random.random() >= self.prob:
+            return x
+
+        semitones = random.randint(self.min_semitones, self.max_semitones)
+
+        if semitones == 0:
+            return x
+
+        # numpy spectrogram
+        if isinstance(x, np.ndarray) and x.ndim >= 2:
+            try:
+                return self._transpose_numpy_spec(x, semitones)
+            except Exception as e:
+                self.logger.error(f"Błąd transpozycji numpy: {e}")
+                return x
+
+        # torch Tensor
+        import torch
+        if isinstance(x, torch.Tensor):
+            try:
+                out = x.clone()
+                return self._transpose_torch_spec(out, semitones)
+            except Exception as e:
+                self.logger.error(f"Błąd transpozycji torch: {e}")
+                return x
+
+        return x
+

@@ -1,8 +1,10 @@
 from typing import List
 import torch
 
+from backend.data.augument.transforms import RandomGain
 from backend.data.augument.transforms import RandomSpecMask
 from backend.data.augument.transforms import AdditiveGaussianNoise
+from backend.data.augument.transforms import RandomTranspose
 from backend.logger import logger as log
 
 
@@ -30,6 +32,13 @@ def build_train_augment_pipeline(train_cfg) -> AugmentPipeline | None:
         return None
 
     transforms: List[object] = []
+    if getattr(train_cfg, "AUGMENT_GAIN_ENABLED", False):
+        logger.info("Włączono augmentację: RandomGain z parametrami: ")
+        logger.info(f"  - Prob: {train_cfg.AUGMENT_GAIN_PROB}")
+        logger.info(f"  - Gain dB Min: {train_cfg.AUGMENT_GAIN_DB_MIN}")
+        logger.info(f"  - Gain dB Max: {train_cfg.AUGMENT_GAIN_DB_MAX}")
+        transforms.append(RandomGain())
+
     if getattr(train_cfg, "AUGMENT_SPECMASK_ENABLED", False):
         logger.info("Włączono augmentację: RandomSpecMask z parametrami: ")
         logger.info(f"  - Prob: {train_cfg.AUGMENT_SPECMASK_PROB}")
@@ -45,6 +54,13 @@ def build_train_augment_pipeline(train_cfg) -> AugmentPipeline | None:
         logger.info(f"  - SNR dB Min: {train_cfg.AUGMENT_NOISE_SNR_DB_MIN}")
         logger.info(f"  - SNR dB Max: {train_cfg.AUGMENT_NOISE_SNR_DB_MAX}")
         transforms.append(AdditiveGaussianNoise())
+
+    if getattr(train_cfg, "AUGMENT_TRANSPOSE_ENABLED", False):
+        logger.info("Włączono augmentację: RandomTranspose z parametrami: ")
+        logger.info(f"  - Prob: {train_cfg.AUGMENT_TRANSPOSE_PROB}")
+        logger.info(f"  - Min Semitones: {train_cfg.AUGMENT_TRANSPOSE_MIN}")
+        logger.info(f"  - Max Semitones: {train_cfg.AUGMENT_TRANSPOSE_MAX}")
+        transforms.append(RandomTranspose())
 
     if not transforms:
         return None
