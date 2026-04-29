@@ -12,6 +12,11 @@ from backend.api.worker import InferenceWorker
 
 
 class MainWindow(QMainWindow):
+    SHARP_TO_FLAT = {
+        "C#": "D♭", "D#": "E♭", "F#": "G♭", "G#": "A♭", "A#": "B♭",
+        "C#m": "D♭m", "D#m": "E♭m", "F#m": "G♭m", "G#m": "A♭m", "A#m": "B♭m"
+    }
+
     def __init__(self):
         super().__init__()
         self.worker = None
@@ -19,6 +24,8 @@ class MainWindow(QMainWindow):
         self.resize(700, 500)
         self.results = []
         self.current_audio_path = None
+
+        self.use_flats = False
 
         self.player = QMediaPlayer()
         self.audio_output = QAudioOutput()
@@ -38,10 +45,18 @@ class MainWindow(QMainWindow):
         chords_group = QGroupBox("Odtwarzanie i Akordy")
         chords_layout = QVBoxLayout(chords_group)
 
+        controls_layout = QHBoxLayout()
+
         self.btn_play = QPushButton("▶ Play")
         self.btn_play.setEnabled(False)
         self.btn_play.clicked.connect(self.toggle_playback)
-        chords_layout.addWidget(self.btn_play)
+        controls_layout.addWidget(self.btn_play)
+
+        self.btn_toggle_notation = QPushButton("Zmień na bemole (♭)")
+        self.btn_toggle_notation.clicked.connect(self.toggle_notation)
+        controls_layout.addWidget(self.btn_toggle_notation)
+
+        chords_layout.addLayout(controls_layout)
 
         labels_layout = QHBoxLayout()
         self.lbl_prev = QLabel("-")
@@ -82,6 +97,22 @@ class MainWindow(QMainWindow):
         event_bus.log_message.connect(self.on_log_message)
         event_bus.inference_finished.connect(self.on_inference_done)
         event_bus.inference_error.connect(self.on_inference_error)
+
+    def format_chord(self, chord: str) -> str:
+        if self.use_flats and chord in self.SHARP_TO_FLAT:
+            return self.SHARP_TO_FLAT[chord]
+        return chord
+
+    def toggle_notation(self):
+        self.use_flats = not self.use_flats
+
+        if self.use_flats:
+            self.btn_toggle_notation.setText("Zmień na krzyżyki (♯)")
+        else:
+            self.btn_toggle_notation.setText("Zmień na bemole (♭)")
+
+        if self.results:
+            self.sync_chords(self.player.position())
 
     def upload_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -133,9 +164,9 @@ class MainWindow(QMainWindow):
             self.player.setSource(QUrl.fromLocalFile(self.current_audio_path))
 
         if self.results:
-            self.lbl_curr.setText(self.results[0]['chord'])
+            self.lbl_curr.setText(self.format_chord(self.results[0]['chord']))
             if len(self.results) > 1:
-                self.lbl_next.setText(self.results[1]['chord'])
+                self.lbl_next.setText(self.format_chord(self.results[1]['chord']))
 
     def on_inference_error(self, error_msg: str):
         self.btn_upload.setEnabled(True)
@@ -143,7 +174,6 @@ class MainWindow(QMainWindow):
         self.lbl_curr.setText("BŁĄD")
 
     def toggle_playback(self):
-        """Pauzuje lub wznawia odtwarzanie muzyki."""
         if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self.player.pause()
             self.btn_play.setText("▶ Play")
@@ -152,26 +182,30 @@ class MainWindow(QMainWindow):
             self.btn_play.setText("⏸ Pause")
 
     def sync_chords(self, position_ms: int):
-        """Wywolywane dziesiątki razy na sekundę przez odtwarzacz. Aktualizuje akordy na ekranie."""
         if not self.results:
             return
 
         current_sec = position_ms / 1000.0
 
+        target_idx = 0
         for i, interval in enumerate(self.results):
-            if interval['start'] <= current_sec <= interval['end']:
-
-                curr_chord = interval['chord']
-                prev_chord = self.results[i - 1]['chord'] if i > 0 else "-"
-                next_chord = self.results[i + 1]['chord'] if i < len(self.results) - 1 else "-"
-
-                if self.lbl_curr.text() != curr_chord:
-                    self.lbl_prev.setText(prev_chord)
-                    self.lbl_curr.setText(curr_chord)
-                    self.lbl_next.setText(next_chord)
-
+            if current_sec <= interval['end']:
+                target_idx = i
                 break
+        else:
+            target_idx = len(self.results) - 1
 
+        curr_chord = self.format_chord(self.results[target_idx]['chord'])
+        prev_chord = self.format_chord(self.results[target_idx - 1]['chord']) if target_idx > 0 else "-"
+        next_chord = self.format_chord(self.results[target_idx + 1]['chord']) if target_idx < len(
+            self.results) - 1 else "-"
+
+        if (self.lbl_curr.text() != curr_chord or
+                self.lbl_prev.text() != prev_chord or
+                self.lbl_next.text() != next_chord):
+            self.lbl_prev.setText(prev_chord)
+            self.lbl_curr.setText(curr_chord)
+            self.lbl_next.setText(next_chord)
 
 def main():
     app = QApplication(sys.argv)
