@@ -1,10 +1,12 @@
 import sys
 import time
+
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QProgressBar, QTextEdit, QFileDialog, QGroupBox
 )
-from PyQt6.QtCore import QObject, pyqtSignal, QThread, Qt
+from PyQt6.QtCore import QObject, pyqtSignal, QThread, Qt, QUrl
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from backend.event_system.event_bus import *
 from backend.api.worker import InferenceWorker
 
@@ -16,6 +18,13 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Chord Classifier - AI Audio Analysis")
         self.resize(700, 500)
         self.results = []
+        self.current_audio_path = None
+
+        self.player = QMediaPlayer()
+        self.audio_output = QAudioOutput()
+        self.player.setAudioOutput(self.audio_output)
+        self.audio_output.setVolume(0.8)
+        self.player.positionChanged.connect(self.sync_chords)
 
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
@@ -31,6 +40,7 @@ class MainWindow(QMainWindow):
 
         self.btn_play = QPushButton("▶ Play")
         self.btn_play.setEnabled(False)
+        self.btn_play.clicked.connect(self.toggle_playback)
         chords_layout.addWidget(self.btn_play)
 
         labels_layout = QHBoxLayout()
@@ -78,6 +88,12 @@ class MainWindow(QMainWindow):
             self, "Wybierz plik audio", "", "Audio Files (*.mp3 *.wav)"
         )
         if file_path:
+            self.current_audio_path = file_path
+
+            if hasattr(self, 'player'):
+                self.player.stop()
+            self.btn_play.setText("▶ Play")
+
             self.btn_upload.setEnabled(False)
             self.btn_play.setEnabled(False)
             self.progress_bar.setValue(0)
@@ -113,6 +129,9 @@ class MainWindow(QMainWindow):
         self.btn_play.setEnabled(True)
         self.lbl_status.setText("Zakończono. Możesz odtworzyć utwór.")
 
+        if self.current_audio_path:
+            self.player.setSource(QUrl.fromLocalFile(self.current_audio_path))
+
         if self.results:
             self.lbl_curr.setText(self.results[0]['chord'])
             if len(self.results) > 1:
@@ -122,6 +141,36 @@ class MainWindow(QMainWindow):
         self.btn_upload.setEnabled(True)
         self.lbl_status.setText("Błąd analizy.")
         self.lbl_curr.setText("BŁĄD")
+
+    def toggle_playback(self):
+        """Pauzuje lub wznawia odtwarzanie muzyki."""
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.player.pause()
+            self.btn_play.setText("▶ Play")
+        else:
+            self.player.play()
+            self.btn_play.setText("⏸ Pause")
+
+    def sync_chords(self, position_ms: int):
+        """Wywolywane dziesiątki razy na sekundę przez odtwarzacz. Aktualizuje akordy na ekranie."""
+        if not self.results:
+            return
+
+        current_sec = position_ms / 1000.0
+
+        for i, interval in enumerate(self.results):
+            if interval['start'] <= current_sec <= interval['end']:
+
+                curr_chord = interval['chord']
+                prev_chord = self.results[i - 1]['chord'] if i > 0 else "-"
+                next_chord = self.results[i + 1]['chord'] if i < len(self.results) - 1 else "-"
+
+                if self.lbl_curr.text() != curr_chord:
+                    self.lbl_prev.setText(prev_chord)
+                    self.lbl_curr.setText(curr_chord)
+                    self.lbl_next.setText(next_chord)
+
+                break
 
 
 def main():

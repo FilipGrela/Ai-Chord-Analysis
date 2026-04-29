@@ -3,11 +3,12 @@ from enum import Enum
 
 
 class LogLevel(Enum):
-    ERROR = 0
-    WARNING = 1
-    INFO = 2
-    DEBUG = 3
+    CRITICAL = 0
+    ERROR = 1
+    WARNING = 2
+    INFO = 3
     SUCCESS = 4
+    DEBUG = 5
 
 
 class AppEventBus(QObject):

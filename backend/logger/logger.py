@@ -4,6 +4,8 @@ import sys
 from backend.config import cfg_logger
 from typing import Any
 from tqdm import tqdm
+from env import *
+from backend.event_system.event_bus import *
 
 
 class TqdmLoggingHandler(logging.StreamHandler):
@@ -47,18 +49,22 @@ class Logger:
 
     def info(self, wiadomosc: str):
         self.logger.info(wiadomosc)
+        self.forwardLogToEvent("INFO", wiadomosc)
 
     def warning(self, wiadomosc: str):
         self.logger.warning(wiadomosc)
+        self.forwardLogToEvent("WARNING", wiadomosc)
 
     def error(self, wiadomosc: str):
         self.logger.error(wiadomosc)
+        self.forwardLogToEvent("ERROR", wiadomosc)
         
     def debug(self, wiadomosc: str):
         if not cfg_logger.DEBUG:
             return
 
         self.logger.debug(wiadomosc)
+        self.forwardLogToEvent("DEBUG", wiadomosc)
 
     def infoModelTraining(
         self,
@@ -122,3 +128,23 @@ class Logger:
             f"Training Summary | Total Time: {total_time_s:.2f}s | "
             f"Best Epoch: {best_epoch} | Best Val Loss: {best_val_loss:.4f} | Best Val Acc: {best_val_acc:.2f}%"
         )
+
+    def forwardLogToEvent(self, level: str, message: str) -> None:
+        log_level = None
+        match level:
+            case "DEBUG":
+                log_level = LogLevel.DEBUG
+            case "INFO":
+                log_level = LogLevel.INFO
+            case "WARNING":
+                log_level = LogLevel.WARNING
+            case "ERROR":
+                log_level = LogLevel.ERROR
+            case "CRITICAL":
+                log_level = LogLevel.CRITICAL
+
+        if log_level is None or not FORWARD_LOG_TO_EVENTS or log_level.value > FORWARD_LOG_MIN_LEVEL:
+            return
+
+        event_bus.log_message.emit(log_level, message)
+

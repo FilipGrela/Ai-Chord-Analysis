@@ -15,13 +15,17 @@ class InferenceWorker(QThread):
         """Ten kod wykonuje się w tle, nie blokując interfejsu."""
         try:
             event_bus.log_message.emit(LogLevel.INFO, f"Rozpoczęto analizę pliku: {self.audio_path}")
-
+            event_bus.progress_updated.emit(0, "Rozpoczynanie analizy")
             try:
+                event_bus.log_message.emit(LogLevel.DEBUG, "Tworzenie silnika")
                 engine = ChordInferenceEngine()
+                event_bus.log_message.emit(LogLevel.DEBUG, "Rozpoczynanie analizy")
                 results = engine.predict(self.audio_path)
             except FileNotFoundError as e:
                 event_bus.log_message(LogLevel.ERROR, e)
                 return
+            event_bus.log_message.emit(LogLevel.SUCCESS, "Zakończono analizę ścieżki audio")
+            event_bus.progress_updated.emit(100, "Analiza zakończona")
 
             event_bus.inference_finished.emit(results)
 
