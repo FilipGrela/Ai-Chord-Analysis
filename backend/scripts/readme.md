@@ -1,4 +1,4 @@
-# SKRYPTY URUCHOMIENIOWE (ENTRY POINTS)
+﻿# SKRYPTY URUCHOMIENIOWE (ENTRY POINTS)
 
 Ten folder zawiera punkty wejścia do aplikacji. Skrypty te pełnią rolę "łączników" – importują klasy z pozostałych modułów backendu, konfigurację z `config.py` i uruchamiają konkretne procesy.
 
@@ -21,7 +21,6 @@ Wszystkie skrypty należy wywoływać z GŁÓWNEGO FOLDERU projektu (root), aby 
 - **Działanie**: Inicjalizuje architekturę `ChordCRNN`, ładuje dane przez `DataLoaderFactory` i uruchamia pętlę treningową `Trainer`.
 - **Funkcje**: Automatycznie dobiera wagi klas (Loss Smoothing), obsługuje Early Stopping oraz Scheduler uczenia.
 - **Wyjście**: Zapisuje najlepszy stan wag do pliku `out/best_crnn_model.pth`.
-- **Sprzęt**: Zoptymalizowany pod GPU RTX 5070 (wymaga CUDA 12.8).
 
 ### 3. run_predict.py
 **Cel:** Testowe wnioskowanie (Inference) na pojedynczym pliku.
@@ -34,5 +33,14 @@ Wszystkie skrypty należy wywoływać z GŁÓWNEGO FOLDERU projektu (root), aby 
 - **Działanie**: Pozwala wygenerować spektrogram CQT oraz Chromagram dla jednego utworu.
 - **Funkcje**: Możliwość przetestowania 8 kombinacji filtrów (Smoothing, Whitening, Denoise) i zapisu ich do plików `.png` w celu porównania jakości cech.
 - **Interakcja**: Otwiera okno wykresu, które pozwala sprawdzić parametry dźwięku po najechaniu myszką.
+
+### 5. run_music_metrics.py
+**Cel:** Analiza muzyczna datasetu i metryki jakości akordu.
+- **Działanie**: Czyta ustawienia bezpośrednio z `backend/config.py` (`cfg_analysis`) i przetwarza dataset `isophonics_dataset`.
+- **Zakres analizy**: Liczy rozkład rootów, jakości akordów (rozszerzone kategorie: `7`, `maj7`, `m7`, `sus2`, `sus4`, `aug`, `dim`, `other`), odległości interwałowe, procent segmentów zgodnych z tonacją oraz najczęstsze przejścia między akordami.
+- **Dodatkowe funkcje:**
+	- raport **per-pliki** (jeśli liczba plików ≤ 50) z top-root i top-quality,
+	- zliczanie i wypis top-10 przejść akordowych,
+- **Zastosowanie**: Służy jako szybki punkt wejścia do sprawdzenia, czy dane są muzycznie spójne i jak można je później wykorzystać do transpozycji oraz balansowania klas.
 
 ---
