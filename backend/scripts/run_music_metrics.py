@@ -1,4 +1,3 @@
-import argparse
 import csv
 import json
 import os
@@ -19,6 +18,7 @@ from backend.analysis.music_metrics import (
     parse_chord,
     parse_key,
 )
+from backend.config import cfg_analysis
 
 # Bierze CSV i wyciaga timestampy oraz akord (wzorowalem sie .csv z isophonics_dataset)
 def _load_labels_csv(csv_path: Path) -> list[tuple[float, float, str]]:
@@ -161,20 +161,18 @@ def _process_dataset(data_dir: Path, default_key: str | None, limit: int | None)
         print(f"  {quality}: {count}")
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Demo metryk muzycznych.")
-    parser.add_argument("--data-dir", type=Path, default=None, help="Katalog datasetu (foldery isophonics_*)")
-    parser.add_argument("--default-key", type=str, default=None, help="Domyślna tonacja, jeśli brak w JAMS")
-    parser.add_argument("--limit", type=int, default=None, help="Limit liczby folderów do analizy")
-    return parser.parse_args()
-
-
 def main():
-    args = parse_args()
+    data_dir = Path(cfg_analysis.MUSIC_METRICS_DATA_DIR)
+    default_key = cfg_analysis.MUSIC_METRICS_DEFAULT_KEY
+    limit = cfg_analysis.MUSIC_METRICS_LIMIT
 
-    if args.data_dir is not None:
-        _process_dataset(args.data_dir, args.default_key, args.limit)
-        return
+    print("=== Music metrics config ===")
+    print(f"Data dir: {data_dir}")
+    print(f"Default key: {default_key}")
+    print(f"Limit: {limit}")
+    print()
+
+    _process_dataset(data_dir, default_key, limit)
 
 
 if __name__ == "__main__":

@@ -15,6 +15,8 @@ from dataclasses import dataclass
 import re
 from typing import Iterable
 
+from backend.config import cfg_analysis
+
 # Przypisujemy kazdemu dzwieku jego index np. C - 0, C# - 1 ...
 NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 NOTE_TO_PC = {note: index for index, note in enumerate(NOTE_NAMES)}
@@ -173,6 +175,9 @@ def chord_similarity(
     predicted: str | None,
     target: str | None,
     key: str | None = None,
+    root_weight: float | None = None,
+    quality_weight: float | None = None,
+    key_weight: float | None = None,
 ) -> dict[str, float | bool | None]:
     """Prosty score diagnostyczny między dwoma akordami.
 
@@ -186,6 +191,14 @@ def chord_similarity(
 
     pred = parse_chord(predicted)
     true = parse_chord(target)
+
+    resolved_root_weight = (
+        cfg_analysis.CHORD_SIMILARITY_ROOT_WEIGHT if root_weight is None else root_weight
+    )
+    resolved_quality_weight = (
+        cfg_analysis.CHORD_SIMILARITY_QUALITY_WEIGHT if quality_weight is None else quality_weight
+    )
+    resolved_key_weight = cfg_analysis.CHORD_SIMILARITY_KEY_WEIGHT if key_weight is None else key_weight
 
     if pred.quality == "N" and true.quality == "N":
         return {
@@ -215,7 +228,15 @@ def chord_similarity(
     )
     key_match = in_key(predicted, key) if key is not None else True
 
-    score = (0.55 * root_score) + (0.30 * (1.0 if quality_match else 0.0)) + (0.15 * (1.0 if key_match else 0.0))
+    total_weight = resolved_root_weight + resolved_quality_weight + resolved_key_weight
+    if total_weight <= 0:
+        total_weight = 1.0
+
+    score = (
+        (resolved_root_weight * root_score)
+        + (resolved_quality_weight * (1.0 if quality_match else 0.0))
+        + (resolved_key_weight * (1.0 if key_match else 0.0))
+    ) / total_weight
     return {
         "score": float(max(0.0, min(1.0, score))),
         "root_match": root_match,

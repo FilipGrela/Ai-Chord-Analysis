@@ -89,10 +89,22 @@ class BuilderConfig:
     CQT_METHOD: str = 'cqt' # 'cqt' lub 'cqt_fast'
 
 
+@dataclass
+class AnalysisConfig:
+    OUTPUT_DIR: str = os.path.join(BASE_DIR, "out", "analysis")
+    CHORD_SIMILARITY_ROOT_WEIGHT: float = 0.55
+    CHORD_SIMILARITY_QUALITY_WEIGHT: float = 0.30
+    CHORD_SIMILARITY_KEY_WEIGHT: float = 0.15
+    MUSIC_METRICS_DATA_DIR: str = os.path.join(os.path.dirname(BASE_DIR), "isophonics_dataset")
+    MUSIC_METRICS_DEFAULT_KEY: str | None = "A"
+    MUSIC_METRICS_LIMIT: int | None = 2
+
+
 # Instancje konfiguracji do importowania w całym projekcie
 cfg_paths = PathsConfig()
 cfg_audio = AudioConfig()
 cfg_model = ModelConfig()
 cfg_train = TrainConfig()
 cfg_builder = BuilderConfig()
+cfg_analysis = AnalysisConfig()
 cfg_logger = LoggerConfig()
