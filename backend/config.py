@@ -97,7 +97,7 @@ class AnalysisConfig:
     CHORD_SIMILARITY_KEY_WEIGHT: float = 0.15
     MUSIC_METRICS_DATA_DIR: str = os.path.join(os.path.dirname(BASE_DIR), "isophonics_dataset")
     MUSIC_METRICS_DEFAULT_KEY: str | None = "A"
-    MUSIC_METRICS_LIMIT: int | None = 2
+    DATASET_SONGS: int | None = 120
 
 
 # Instancje konfiguracji do importowania w całym projekcie

@@ -54,14 +54,18 @@ def _normalize_text(value: str | None) -> str:
 
 
 def parse_chord(chord: str | None) -> ParsedChord:
-    """Parsuje akord do uproszczonej reprezentacji root + major/minor.
+    """Parsuje akord do reprezentacji root + jakość.
 
     Obsługiwane przykłady:
-    - C
-    - Am
-    - C:maj
-    - D:min7
-    - N
+    - C, Cmaj -> maj
+    - Am, Amin, A:min -> m
+    - Cmaj7, C:maj7 -> maj7
+    - Am7, A:m7, Amin7 -> m7
+    - C7, Cdom7 -> 7
+    - Csus2, Csus4 -> sus2, sus4
+    - Caug -> aug
+    - Cdim -> dim
+    - N, X -> N (cisza)
     """
 
     # cisza albo cos gorszego
@@ -69,28 +73,50 @@ def parse_chord(chord: str | None) -> ParsedChord:
     if chord_text in {"", "N", "X", "Z"}:
         return ParsedChord(raw=chord_text, root=None, root_pc=None, is_minor=None, quality="N")
 
-    #Odrzuca bas z akordow np. C/E -> zostanie samo E
+    # Odrzuca bas z akordow np. C/E -> zostanie samo C
     chord_text = chord_text.split("/")[0]
     # dzieli akord na Dźwięk i reszte tekstu np. D# i maj
     match = re.match(r"^([A-G][#b]?)(.*)$", chord_text)
     if not match:
         return ParsedChord(raw=chord_text, root=None, root_pc=None, is_minor=None, quality="N")
 
-
     # Ustawianie wszystkiego pod zdefiniowanie akordu
     root, quality_part = match.groups()
     root_pc = ENHARMONIC_TO_PC.get(root, NOTE_TO_PC.get(root))
-    quality_lower = quality_part.lower()
+    quality_lower = quality_part.lower().replace(":", "").strip()
 
-    if "dim" in quality_lower or "aug" in quality_lower:
-        is_minor = True if "dim" in quality_lower else False
-        quality = "m" if "dim" in quality_lower else "maj"
-    elif "min" in quality_lower or ("m" in quality_lower and "maj" not in quality_lower):
-        is_minor = True
-        quality = "m"
-    else:
+    # Klasyfikacja jakości akordu - najpierw bardziej specyficzne, potem ogólne
+    if "maj7" in quality_lower:
+        quality = "maj7"
         is_minor = False
+    elif "m7" in quality_lower or "min7" in quality_lower:
+        quality = "m7"
+        is_minor = True
+    elif quality_lower in {"7", "dom", "dom7"}:
+        quality = "7"
+        is_minor = False  # dominanta to dur
+    elif "sus2" in quality_lower:
+        quality = "sus2"
+        is_minor = None  # sus nie jest ani dur ani mol
+    elif "sus4" in quality_lower or "sus" in quality_lower:
+        quality = "sus4"
+        is_minor = None
+    elif "aug" in quality_lower or "+" in quality_part:
+        quality = "aug"
+        is_minor = False
+    elif "dim" in quality_lower or "o" in quality_lower:
+        quality = "dim"
+        is_minor = True
+    elif "min" in quality_lower or (quality_lower == "m"):
+        quality = "m"
+        is_minor = True
+    elif "maj" in quality_lower or quality_lower == "":
         quality = "maj"
+        is_minor = False
+    else:
+        # Fallback dla nieznanego formatu
+        quality = "other"
+        is_minor = None
 
     return ParsedChord(raw=chord_text, root=root, root_pc=root_pc, is_minor=is_minor, quality=quality)
 
@@ -221,11 +247,15 @@ def chord_similarity(
     distance = interval_distance(predicted, target)
     root_score = 0.0 if distance is None else max(0.0, 1.0 - (distance / 6.0))
     root_match = pred.root_pc == true.root_pc
-    quality_match = (
-        pred.is_minor == true.is_minor
-        if pred.is_minor is not None and true.is_minor is not None
-        else False
-    )
+    
+    # Porównanie jakości - dokładne dopasowanie lub porównanie osnowy (maj/m)
+    quality_match = pred.quality == true.quality
+    if not quality_match and pred.quality != "N" and true.quality != "N":
+        # Fallback: jeśli dokładne nie pasuje, sprawdź czy obie są dur-like albo mol-like
+        pred_is_minor = pred.is_minor if pred.is_minor is not None else False
+        true_is_minor = true.is_minor if true.is_minor is not None else False
+        quality_match = pred_is_minor == true_is_minor
+    
     key_match = in_key(predicted, key) if key is not None else True
 
     total_weight = resolved_root_weight + resolved_quality_weight + resolved_key_weight
