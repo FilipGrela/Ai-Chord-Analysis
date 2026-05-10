@@ -31,4 +31,4 @@ Najprostszy test uruchomieniowy:
 python backend/scripts/run_music_metrics.py
 ```
 
-Skrypt odczytuje dane z `cfg_analysis` i przetwarza folder datasetu w prostym raporcie tekstowym.
+Skrypt odczytuje dane z `cfg_analysis`, wypisuje raport tekstowy i zapisuje dodatkowy raport HTML.
