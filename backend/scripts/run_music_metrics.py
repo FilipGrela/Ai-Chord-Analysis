@@ -65,6 +65,7 @@ def _load_key_segments(jams_path: Path) -> list[tuple[float, float, str]]:
     return key_segments
 
 # Jaka tonacja wystepuje w danym momencie (na podstw. pliku .jams)
+# UWAGA - jesli brak podanej tonacji w pliku .jams bierze jak z configa
 def _match_key_for_time(time_sec: float, key_segments: list[tuple[float, float, str]], default_key: str | None) -> str | None:
     if not key_segments:
         return default_key
@@ -84,6 +85,12 @@ def _process_dataset(data_dir: Path, default_key: str | None, limit: int | None)
     in_key_matches = 0  # Ile akordów faktycznie pasowało do tej tonacji
     total_segments = 0 # Całkowita liczba wierszy (akordów)
     segment_durations: list[float] = [] # Długości segmentów
+    key_root_counts: dict[str, dict[str, int]] = {} # zlicza ile razy wystapil dany root (np. C, G#) wystapil w obrebie danej tonacji
+    key_quality_counts: dict[str, dict[str, int]] = {} # ile razy dany typ (np. min, sus4) wystapil w obrebie danej tonacji
+
+    # Dodatkowy zagnieżdżony słownik: dla każdej tonacji -> root -> typ -> count
+    # Pozwala wypisać, dla przykładowo rootu 'C', ile razy wystąpiło 'C:maj', 'C:m', etc.
+    key_root_quality_counts: dict[str, dict[str, dict[str, int]]] = {}
     
     # Dane per-plik
     file_stats: dict[str, dict] = {} # Statystyki dla każdego pliku
@@ -148,6 +155,20 @@ def _process_dataset(data_dir: Path, default_key: str | None, limit: int | None)
                 if in_key(chord, key):
                     in_key_matches += 1
                     file_stats[file_name]["in_key_count"] += 1
+
+            # Zliczamy wystapienia rootow akordow i ich typow dla danej tonacji
+            if key is not None:
+                _, _, key_norm = parse_key(key)
+                if not key_norm:
+                    key_norm = str(key)
+                kr = key_root_counts.setdefault(key_norm, {})
+                kq = key_quality_counts.setdefault(key_norm, {})
+                kr[root] = kr.get(root, 0) + 1
+                kq[quality] = kq.get(quality, 0) + 1
+                # Tutaj mapujemy jeszcze typ akordu z jego rootem i to tez zliczamy
+                krq = key_root_quality_counts.setdefault(key_norm, {})
+                root_map = krq.setdefault(root, {})
+                root_map[quality] = root_map.get(quality, 0) + 1
 
             # mierzenie interwalu poprzedniego akordu
             if prev_chord is not None:
@@ -224,6 +245,23 @@ def _process_dataset(data_dir: Path, default_key: str | None, limit: int | None)
     for quality, count in sorted(quality_counts.items(), key=lambda item: item[1], reverse=True):
         pct = 100 * count / total_segments if total_segments > 0 else 0
         print(f"  {quality:6s}: {count:4d} ({pct:5.1f}%)")
+
+    # Rozkłady per-tonacja
+    if key_root_counts:
+        print(f"\nROZKŁADY PER-TONACJA:")
+        for key_name in sorted(key_root_counts.keys()):
+            roots = key_root_counts[key_name]
+            total = sum(roots.values())
+            print(f"  Tonacja {key_name}: {total} akordów")
+            for root, c in sorted(roots.items(), key=lambda x: x[1], reverse=True)[:10]:
+                pct = 100 * c / total if total > 0 else 0
+                print(f"    {root:3s}: {c:4d} ({pct:5.1f}%)")
+                # Jeśli mamy też rozkład jakości dla tego rootu, pokażemy go pod spodem
+                root_quals = key_root_quality_counts.get(key_name, {}).get(root, {})
+                if root_quals:
+                    for q, qc in sorted(root_quals.items(), key=lambda x: x[1], reverse=True):
+                        pct_root = 100 * qc / c if c > 0 else 0
+                        print(f"      - {q:6s}: {qc:4d} ({pct_root:5.1f}% of {root})")
     
     print(f"\nTOP 10 PRZEJŚĆ MIĘDZY AKORDAMI:")
     sorted_transitions = sorted(chord_transitions.items(), key=lambda item: item[1], reverse=True)[:10]
