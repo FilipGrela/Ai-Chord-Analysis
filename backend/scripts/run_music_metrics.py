@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import statistics
+from datetime import datetime
 from pathlib import Path
 from collections import defaultdict
 
@@ -73,6 +74,92 @@ def _match_key_for_time(time_sec: float, key_segments: list[tuple[float, float, 
         if start <= time_sec < end:
             return key
     return default_key
+
+
+def _export_html_report(
+    processed_tracks: int,
+    total_segments: int,
+    mean_segment_duration: float,
+    total_time_s: float,
+    in_key_ratio: float,
+    mean_interval: float,
+    std_interval: float,
+    root_counts: dict[str, int],
+    quality_counts: dict[str, int],
+    key_root_counts: dict[str, dict[str, int]],
+    key_root_quality_counts: dict[str, dict[str, dict[str, int]]],
+    chord_transitions: dict[str, int],
+) -> None:
+    """Zapisuje raport analizy tylko do HTML w cfg_analysis.OUTPUT_DIR."""
+    out_dir = Path(cfg_analysis.OUTPUT_DIR)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    html_path = out_dir / f"music_metrics_{ts}.html"
+
+    with html_path.open("w", encoding="utf-8") as fh:
+        fh.write('<!doctype html><html><head><meta charset="utf-8"><title>Music Metrics</title>')
+        fh.write('<style>body{font-family:Arial,Helvetica,sans-serif}h2{margin-top:1em}table{border-collapse:collapse}td,th{border:1px solid #ddd;padding:6px}</style>')
+        fh.write('</head><body>')
+        fh.write(f'<h1>Music Metrics report ({ts})</h1>')
+        fh.write(
+            '<p>Raport podsumowuje cały dataset: najpierw metryki ogólne, potem globalny rozkład rootów i typów akordów, '
+            'następnie szczegóły per-tonacja (root + quality) oraz najczęstsze przejścia między akordami.</p>'
+        )
+        fh.write('<h2>Summary</h2>')
+        fh.write('<p>Podstawowe metryki całego zbioru: liczba utworów, segmentów, in-key ratio i statystyki interwałowe.</p>')
+        fh.write('<ul>')
+        fh.write(f'<li><strong>processed_tracks:</strong> {processed_tracks}</li>')
+        fh.write(f'<li><strong>total_segments:</strong> {total_segments}</li>')
+        fh.write(f'<li><strong>mean_segment_duration:</strong> {mean_segment_duration}</li>')
+        fh.write(f'<li><strong>total_time_s:</strong> {total_time_s}</li>')
+        fh.write(f'<li><strong>in_key_ratio:</strong> {in_key_ratio}</li>')
+        fh.write(f'<li><strong>mean_interval:</strong> {mean_interval}</li>')
+        fh.write(f'<li><strong>std_interval:</strong> {std_interval}</li>')
+        fh.write('</ul>')
+
+        fh.write('<h2>Rozkład rootów (globalnie)</h2>')
+        fh.write('<p>Udział rootów akordów w całym zbiorze. Procent liczony względem wszystkich segmentów.</p>')
+        fh.write('<table><tr><th>Root</th><th>Count</th><th>Percent</th></tr>')
+        for root, count in sorted(root_counts.items(), key=lambda x: x[1], reverse=True):
+            pct = (100.0 * count / total_segments) if total_segments > 0 else 0.0
+            fh.write(f'<tr><td>{root}</td><td>{count}</td><td>{pct:.2f}%</td></tr>')
+        fh.write('</table>')
+
+        fh.write('<h2>Rozkład typów akordów (globalnie)</h2>')
+        fh.write('<p>Udział jakości akordów (np. maj, m, 7, sus4) w całym zbiorze. Procent liczony względem wszystkich segmentów.</p>')
+        fh.write('<table><tr><th>Quality</th><th>Count</th><th>Percent</th></tr>')
+        for quality, count in sorted(quality_counts.items(), key=lambda x: x[1], reverse=True):
+            pct = (100.0 * count / total_segments) if total_segments > 0 else 0.0
+            fh.write(f'<tr><td>{quality}</td><td>{count}</td><td>{pct:.2f}%</td></tr>')
+        fh.write('</table>')
+
+        fh.write('<h2>Per-key breakdowns</h2>')
+        fh.write('<p>Dla każdej tonacji pokazane są rooty i ich liczności. Dodatkowo przy każdym rootcie jest rozbicie na quality.</p>')
+        for key_name in sorted(key_root_counts.keys()):
+            fh.write(f'<h3>Tonacja {key_name}</h3>')
+            fh.write('<table><tr><th>Root</th><th>Count</th><th>Percent in key</th><th>Quality breakdown</th></tr>')
+            roots = key_root_counts[key_name]
+            total_in_key = sum(roots.values())
+            for root, c in sorted(roots.items(), key=lambda x: x[1], reverse=True):
+                quals = key_root_quality_counts.get(key_name, {}).get(root, {})
+                qhtml = '<br>'.join([
+                    f'{q}: {qc} ({(100.0 * qc / c) if c > 0 else 0.0:.1f}%)'
+                    for q, qc in sorted(quals.items(), key=lambda x: x[1], reverse=True)
+                ])
+                pct_in_key = (100.0 * c / total_in_key) if total_in_key > 0 else 0.0
+                fh.write(f'<tr><td>{root}</td><td>{c}</td><td>{pct_in_key:.2f}%</td><td>{qhtml}</td></tr>')
+            fh.write('</table>')
+
+        fh.write('<h2>Top transitions</h2>')
+        fh.write('<p>Najczęstsze przejścia pomiędzy kolejnymi akordami. Procent liczony względem wszystkich przejść.</p>')
+        fh.write('<table><tr><th>Transition</th><th>Count</th><th>Percent</th></tr>')
+        total_transitions = sum(chord_transitions.values())
+        for t, cnt in sorted(chord_transitions.items(), key=lambda x: x[1], reverse=True)[:50]:
+            pct_t = (100.0 * cnt / total_transitions) if total_transitions > 0 else 0.0
+            fh.write(f'<tr><td>{t}</td><td>{cnt}</td><td>{pct_t:.2f}%</td></tr>')
+        fh.write('</table>')
+
+        fh.write('</body></html>')
 
 
 def _process_dataset(data_dir: Path, default_key: str | None, limit: int | None) -> None:
@@ -241,7 +328,7 @@ def _process_dataset(data_dir: Path, default_key: str | None, limit: int | None)
         pct = 100 * count / total_segments if total_segments > 0 else 0
         print(f"  {root:3s}: {count:4d} ({pct:5.1f}%)")
     
-    print(f"\nROZKŁAD JAKOŚCI AKORDÓW (CHORD QUALITY DISTRIBUTION):")
+    print(f"\nROZKŁAD TYPÓW AKORDÓW (CHORD QUALITY DISTRIBUTION):")
     for quality, count in sorted(quality_counts.items(), key=lambda item: item[1], reverse=True):
         pct = 100 * count / total_segments if total_segments > 0 else 0
         print(f"  {quality:6s}: {count:4d} ({pct:5.1f}%)")
@@ -295,6 +382,25 @@ def _process_dataset(data_dir: Path, default_key: str | None, limit: int | None)
                 print(f"    - In-key: {file_in_key_ratio:.1%} ({stats['in_key_count']}/{stats['in_key_total']})")
             print(f"    - Mean interval: {file_mean_distance:.2f}")
     
+    # Eksport wyników: HTML
+    try:
+        _export_html_report(
+            processed_tracks=processed_tracks,
+            total_segments=total_segments,
+            mean_segment_duration=mean_segment_duration,
+            total_time_s=sum(segment_durations),
+            in_key_ratio=in_key_ratio,
+            mean_interval=mean_distance,
+            std_interval=std_distance,
+            root_counts=root_counts,
+            quality_counts=quality_counts,
+            key_root_counts=key_root_counts,
+            key_root_quality_counts=key_root_quality_counts,
+            chord_transitions=chord_transitions,
+        )
+    except Exception:
+        pass
+
     print("\n" + "=" * 60)
 
 

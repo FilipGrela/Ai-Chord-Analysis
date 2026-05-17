@@ -41,6 +41,7 @@ Wszystkie skrypty należy wywoływać z GŁÓWNEGO FOLDERU projektu (root), aby 
 - **Dodatkowe funkcje:**
 	- raport **per-pliki** (jeśli liczba plików ≤ 50) z top-root i top-quality,
 	- zliczanie i wypis top-10 przejść akordowych,
+	- eksport wyników do prostego `HTML`
 - **Zastosowanie**: Służy jako szybki punkt wejścia do sprawdzenia, czy dane są muzycznie spójne i jak można je później wykorzystać do transpozycji oraz balansowania klas.
 
 ---
