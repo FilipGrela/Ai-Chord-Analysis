@@ -6,6 +6,10 @@ from datetime import datetime
 from tqdm import tqdm
 from backend.config import cfg_train, cfg_paths
 from backend.logger.logger import Logger
+import os
+import numpy as np
+from backend.metrics.evaluator import MetricsEvaluator, MetricsVisualizer
+from backend.data.builder import DatasetBuilder
 
 logger = Logger(__name__)
 
@@ -33,6 +37,13 @@ class Trainer:
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer, mode='min', factor=0.5, patience=2
         )
+
+        # Metrics / visualization
+        self.metrics_dir = os.path.join(os.getcwd(), "out", "metrics")
+        os.makedirs(self.metrics_dir, exist_ok=True)
+        self.evaluator = MetricsEvaluator(class_names=DatasetBuilder.VOCAB, output_dir=self.metrics_dir)
+        self.visualizer = MetricsVisualizer(output_dir=self.metrics_dir)
+        self.history_csv = os.path.join(self.metrics_dir, "history.csv")
 
     def _log_metrics(self, epoch, train_loss, train_acc, val_loss, val_acc):
         """MIEJSCE NA MLOps: W przyszłości tutaj podpinamy np. wandb.log()"""
@@ -99,14 +110,23 @@ class Trainer:
             self.model.eval()
             val_loss, correct_val, total_val = 0.0, 0, 0
             
+            # collect predictions for epoch-level metrics
+            val_preds_all = []
+            val_labels_all = []
+
             with torch.no_grad():
                 for inputs, labels in self.val_loader:
                     inputs, labels = inputs.to(self.device), labels.to(self.device)
                     outputs = self.model(inputs)
                     loss = self.criterion(outputs, labels)
-                    
+
                     val_loss += loss.item()
                     _, predicted = torch.max(outputs.data, 1)
+
+                    # collect for evaluator
+                    val_preds_all.extend(predicted.cpu().numpy().tolist())
+                    val_labels_all.extend(labels.cpu().numpy().tolist())
+
                     total_val += labels.size(0)
                     correct_val += (predicted == labels).sum().item()
                     
@@ -161,3 +181,31 @@ class Trainer:
                 if epochs_no_improve >= self.config.PATIENCE:
                     logger.warning("Early Stopping: Przerwano trening by uniknąć przeuczenia.")
                     break
+
+            # --- append epoch history and generate epoch-level metrics/plots ---
+            row = {
+                "epoch": epoch,
+                "train_loss": train_loss,
+                "train_acc": train_acc,
+                "val_loss": val_loss,
+                "val_acc": val_acc,
+                "lr": self.optimizer.param_groups[0]["lr"],
+            }
+            csv_path = self.evaluator.append_history(row, csv_name=os.path.basename(self.history_csv))
+
+            # compute per-epoch metrics on full validation set
+            y_true = np.array(val_labels_all, dtype=int)
+            y_pred = np.array(val_preds_all, dtype=int)
+            try:
+                results = self.evaluator.evaluate(y_true, y_pred)
+
+                # save confusion matrix + per-class metrics for this epoch
+                self.visualizer.plot_confusion_matrix(results["cm"], DatasetBuilder.VOCAB,
+                                                      out_path=os.path.join(self.metrics_dir, f"cm_epoch{epoch}.png"))
+                self.visualizer.plot_per_class_metrics(results["per_class"],
+                                                       out_path=os.path.join(self.metrics_dir, f"per_class_epoch{epoch}.png"))
+
+                # update rolling history plot
+                self.visualizer.plot_history(csv_path, out_path=os.path.join(self.metrics_dir, "history.png"))
+            except Exception as exc:
+                logger.warning(f"Metrics generation failed for epoch {epoch}: {exc}")

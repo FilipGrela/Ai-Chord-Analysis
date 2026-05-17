@@ -51,7 +51,7 @@ class ModelConfig:
 @dataclass
 class TrainConfig:
     BATCH_SIZE: int = 64
-    EPOCHS: int = 50
+    EPOCHS: int = 4
     LEARNING_RATE: float = 1e-4
     PATIENCE: int = 5
 
