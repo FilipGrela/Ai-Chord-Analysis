@@ -1,13 +1,23 @@
 import sys
-import time
+import os
+import html
+
+# Ignoring mp3float warnings
+try:
+    stderr_fd = sys.stderr.fileno()
+    devnull_fd = os.open(os.devnull, os.O_WRONLY)
+    os.dup2(devnull_fd, stderr_fd)
+    sys.stderr = sys.stdout
+except Exception:
+    pass
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLabel, QProgressBar, QTextEdit, QFileDialog, QGroupBox
+    QPushButton, QLabel, QProgressBar, QTextEdit, QFileDialog, QGroupBox, QSlider
 )
-from PyQt6.QtCore import QObject, pyqtSignal, QThread, Qt, QUrl
+from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
-from backend.event_system.event_bus import *
+from backend.event_system.event_bus import LogLevel, event_bus
 from backend.api.worker import InferenceWorker
 
 
@@ -31,8 +41,13 @@ class MainWindow(QMainWindow):
         self.audio_output = QAudioOutput()
         self.player.setAudioOutput(self.audio_output)
         self.audio_output.setVolume(0.8)
-        self.player.positionChanged.connect(self.sync_chords)
 
+        # Connecting to audio events
+        self.player.positionChanged.connect(self.sync_playback)
+        self.player.durationChanged.connect(self.update_duration)
+        self.player.mediaStatusChanged.connect(self.on_media_status_changed)  # Wykrywanie końca piosenki
+
+        # --- UI LAYOUT ---
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
         layout = QVBoxLayout(main_widget)
@@ -45,8 +60,8 @@ class MainWindow(QMainWindow):
         chords_group = QGroupBox("Odtwarzanie i Akordy")
         chords_layout = QVBoxLayout(chords_group)
 
+        # Buttons
         controls_layout = QHBoxLayout()
-
         self.btn_play = QPushButton("▶ Play")
         self.btn_play.setEnabled(False)
         self.btn_play.clicked.connect(self.toggle_playback)
@@ -55,9 +70,20 @@ class MainWindow(QMainWindow):
         self.btn_toggle_notation = QPushButton("Zmień na bemole (♭)")
         self.btn_toggle_notation.clicked.connect(self.toggle_notation)
         controls_layout.addWidget(self.btn_toggle_notation)
-
         chords_layout.addLayout(controls_layout)
 
+        # Slider
+        slider_layout = QHBoxLayout()
+        self.slider = QSlider(Qt.Orientation.Horizontal)
+        self.slider.setRange(0, 0)
+        self.slider.sliderMoved.connect(self.set_position) # User slides slider event
+        self.lbl_time = QLabel("00:00 / 00:00")
+
+        slider_layout.addWidget(self.slider)
+        slider_layout.addWidget(self.lbl_time)
+        chords_layout.addLayout(slider_layout)
+
+        # Accords
         labels_layout = QHBoxLayout()
         self.lbl_prev = QLabel("-")
         self.lbl_curr = QLabel("Czekam...")
@@ -77,6 +103,7 @@ class MainWindow(QMainWindow):
         chords_layout.addLayout(labels_layout)
         layout.addWidget(chords_group)
 
+        # Status
         status_group = QGroupBox("Status Analizy")
         status_layout = QVBoxLayout(status_group)
 
@@ -98,90 +125,36 @@ class MainWindow(QMainWindow):
         event_bus.inference_finished.connect(self.on_inference_done)
         event_bus.inference_error.connect(self.on_inference_error)
 
-    def format_chord(self, chord: str) -> str:
-        if self.use_flats and chord in self.SHARP_TO_FLAT:
-            return self.SHARP_TO_FLAT[chord]
-        return chord
+    def format_time(self, ms: int) -> str:
+        seconds = (ms // 1000) % 60
+        minutes = (ms // 60000) % 60
+        return f"{minutes:02}:{seconds:02}"
 
-    def toggle_notation(self):
-        self.use_flats = not self.use_flats
-
-        if self.use_flats:
-            self.btn_toggle_notation.setText("Zmień na krzyżyki (♯)")
-        else:
-            self.btn_toggle_notation.setText("Zmień na bemole (♭)")
-
-        if self.results:
-            self.sync_chords(self.player.position())
-
-    def upload_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Wybierz plik audio", "", "Audio Files (*.mp3 *.wav)"
-        )
-        if file_path:
-            self.current_audio_path = file_path
-
-            if hasattr(self, 'player'):
-                self.player.stop()
-            self.btn_play.setText("▶ Play")
-
-            self.btn_upload.setEnabled(False)
-            self.btn_play.setEnabled(False)
-            self.progress_bar.setValue(0)
-            self.log_console.clear()
-            self.lbl_curr.setText("Analiza...")
-
-            self.worker = InferenceWorker(file_path)
-            self.worker.start()
-
-    def on_progress_update(self, percent: int, status: str):
-        self.progress_bar.setValue(percent)
-        self.lbl_status.setText(status)
-
-    def on_log_message(self, level: LogLevel, message: str):
-        color = "white"
-        if level == LogLevel.ERROR:
-            color = "red"
-        elif level == LogLevel.WARNING:
-            color = "yellow"
-        elif level == LogLevel.INFO:
-            color = "#569cd6"
-        elif level == LogLevel.DEBUG:
-            color = "gray"
-        elif level == LogLevel.SUCCESS:
-            color = "green"
-
-        html_msg = f'<span style="color:{color}">[{level.name}] {message}</span>'
-        self.log_console.append(html_msg)
-
-    def on_inference_done(self, results: list):
-        self.results = results
-        self.btn_upload.setEnabled(True)
-        self.btn_play.setEnabled(True)
-        self.lbl_status.setText("Zakończono. Możesz odtworzyć utwór.")
-
-        if self.current_audio_path:
-            self.player.setSource(QUrl.fromLocalFile(self.current_audio_path))
-
-        if self.results:
-            self.lbl_curr.setText(self.format_chord(self.results[0]['chord']))
-            if len(self.results) > 1:
-                self.lbl_next.setText(self.format_chord(self.results[1]['chord']))
-
-    def on_inference_error(self, error_msg: str):
-        self.btn_upload.setEnabled(True)
-        self.lbl_status.setText("Błąd analizy.")
-        self.lbl_curr.setText("BŁĄD")
-
+    # Audio logic
     def toggle_playback(self):
         if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self.player.pause()
             self.btn_play.setText("▶ Play")
         else:
+            # Clicking play after the end of the song
+            if self.player.mediaStatus() == QMediaPlayer.MediaStatus.EndOfMedia:
+                self.player.setPosition(0)
             self.player.play()
             self.btn_play.setText("⏸ Pause")
 
-    def sync_chords(self, position_ms: int):
+    def set_position(self, position: int):
+        self.player.setPosition(position)
+
+    def update_duration(self, duration: int):
+        self.slider.setRange(0, duration)
+
+    def sync_playback(self, position_ms: int):
+        if not self.slider.isSliderDown():
+            self.slider.setValue(position_ms)
+
+        duration_ms = self.player.duration()
+        self.lbl_time.setText(f"{self.format_time(position_ms)} / {self.format_time(duration_ms)}")
+
         if not self.results:
             return
 
@@ -207,12 +180,94 @@ class MainWindow(QMainWindow):
             self.lbl_curr.setText(curr_chord)
             self.lbl_next.setText(next_chord)
 
+    def on_media_status_changed(self, status):
+        if status == QMediaPlayer.MediaStatus.EndOfMedia:
+            self.player.stop()
+            self.btn_play.setText("🔁 Odtwórz ponownie")
+            self.slider.setValue(0)
+            self.lbl_time.setText(f"00:00 / {self.format_time(self.player.duration())}")
+
+    def format_chord(self, chord: str) -> str:
+        if self.use_flats and chord in self.SHARP_TO_FLAT:
+            return self.SHARP_TO_FLAT[chord]
+        return chord
+
+    def toggle_notation(self):
+        self.use_flats = not self.use_flats
+        self.btn_toggle_notation.setText("Zmień na krzyżyki (♯)" if self.use_flats else "Zmień na bemole (♭)")
+        if self.results:
+            self.sync_playback(self.player.position())
+
+    def upload_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Wybierz plik audio", "", "Audio Files (*.mp3 *.wav)")
+        if file_path:
+            self.current_audio_path = file_path
+
+            if hasattr(self, 'player'):
+                self.player.stop()
+            self.btn_play.setText("▶ Play")
+
+            self.btn_upload.setEnabled(False)
+            self.btn_play.setEnabled(False)
+            self.progress_bar.setValue(0)
+            self.log_console.clear()
+
+            self.results = []
+            self.lbl_prev.setText("-")
+            self.lbl_curr.setText("Analiza...")
+            self.lbl_next.setText("-")
+            self.slider.setValue(0)
+            self.lbl_time.setText("00:00 / 00:00")
+
+            self.worker = InferenceWorker(file_path)
+            self.worker.start()
+
+    def on_progress_update(self, percent: int, status: str):
+        self.progress_bar.setValue(percent)
+        self.lbl_status.setText(status)
+
+    def on_log_message(self, level: LogLevel, message: str):
+        color = "white"
+        if level == LogLevel.ERROR:
+            color = "red"
+        elif level == LogLevel.WARNING:
+            color = "yellow"
+        elif level == LogLevel.INFO:
+            color = "#569cd6"
+        elif level == LogLevel.DEBUG:
+            color = "gray"
+        elif level == LogLevel.SUCCESS:
+            color = "green"
+
+        safe_message = html.escape(message)
+
+        html_msg = f'<span style="color:{color}">[{level.name}] {safe_message}</span>'
+        self.log_console.append(html_msg)
+
+    def on_inference_done(self, results: list):
+        self.results = results
+        self.btn_upload.setEnabled(True)
+        self.btn_play.setEnabled(True)
+        self.lbl_status.setText("Zakończono. Możesz odtworzyć utwór.")
+
+        if self.current_audio_path:
+            self.player.setSource(QUrl.fromLocalFile(self.current_audio_path))
+
+        if self.results:
+            self.lbl_curr.setText(self.format_chord(self.results[0]['chord']))
+            if len(self.results) > 1:
+                self.lbl_next.setText(self.format_chord(self.results[1]['chord']))
+
+    def on_inference_error(self, error_msg: str):
+        self.btn_upload.setEnabled(True)
+        self.lbl_status.setText("Błąd analizy.")
+        self.lbl_curr.setText("BŁĄD")
+
+
 def main():
     app = QApplication(sys.argv)
-
     window = MainWindow()
     window.show()
-
     sys.exit(app.exec())
 
 

@@ -4,9 +4,8 @@ import sys
 from backend.config import cfg_logger
 from typing import Any
 from tqdm import tqdm
-from env import *
-from backend.event_system.event_bus import *
-
+from backend.config import LoggerConfig
+from backend.event_system.event_bus import LogLevel
 
 class TqdmLoggingHandler(logging.StreamHandler):
     """Handler, który wypisuje logi przez tqdm.write, żeby nie psuć pasków postępu."""
@@ -143,8 +142,13 @@ class Logger:
             case "CRITICAL":
                 log_level = LogLevel.CRITICAL
 
-        if log_level is None or not FORWARD_LOG_TO_EVENTS or log_level.value > FORWARD_LOG_MIN_LEVEL:
+        if (log_level is None or not LoggerConfig.FORWARD_LOG_TO_EVENTS or
+                log_level.value > LoggerConfig.FORWARD_LOG_MIN_LEVEL):
             return
 
-        event_bus.log_message.emit(log_level, message)
+        try:
+            from backend.event_system.event_bus import event_bus
+            event_bus.log_message.emit(log_level, message)
+        except ImportError:
+            pass
 

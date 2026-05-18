@@ -1,5 +1,3 @@
-import time
-
 from PyQt6.QtCore import QThread
 
 from backend.api.inference import ChordInferenceEngine
@@ -22,7 +20,8 @@ class InferenceWorker(QThread):
                 event_bus.log_message.emit(LogLevel.DEBUG, "Rozpoczynanie analizy")
                 results = engine.predict(self.audio_path)
             except FileNotFoundError as e:
-                event_bus.log_message(LogLevel.ERROR, e)
+                event_bus.log_message.emit(LogLevel.ERROR, str(e))
+                event_bus.inference_error.emit(str(e))
                 return
             event_bus.log_message.emit(LogLevel.SUCCESS, "Zakończono analizę ścieżki audio")
             event_bus.progress_updated.emit(100, "Analiza zakończona")
@@ -30,6 +29,6 @@ class InferenceWorker(QThread):
             event_bus.inference_finished.emit(results)
 
         except Exception as e:
+            event_bus.log_message.emit(LogLevel.ERROR, f"Wystąpił błąd: {str(e)}")
             event_bus.inference_error.emit(str(e))
-            event_bus.log_message.emit("ERROR", f"Wystąpił błąd: {str(e)}")
 

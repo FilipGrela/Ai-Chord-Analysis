@@ -7,7 +7,7 @@ from backend.dsp.src.cqtTransform import CqtTransform
 from backend.dsp.src.hpssFilter import HpssFilter
 from backend.dsp.src.pipeline import Pipeline
 from backend.logger.logger import Logger
-from backend.event_system.event_bus import *
+from backend.event_system.event_bus import event_bus, LogLevel
 
 logger = Logger(__name__)
 
@@ -189,7 +189,7 @@ class AudioProcessor:
 
         audio_data = self._prepare_audio_float32(audio_data)
 
-        # Dodane bo reczny CQT juz ma 
+        # Dodane bo reczny CQT juz ma
         if apply_hpss and method != 'pipeline' and method != 'cqt':
             audio_data = self.apply_hpss_filter(audio_data)
 

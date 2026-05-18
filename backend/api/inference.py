@@ -7,7 +7,7 @@ from backend.config import cfg_paths, cfg_audio
 from backend.models.crnn import ChordCRNN
 from backend.dsp.spectrograms import AudioProcessor
 from backend.logger.logger import Logger
-from backend.event_system.event_bus import *
+from backend.event_system.event_bus import event_bus, LogLevel
 
 logger = Logger(__name__)
 
