@@ -2,6 +2,10 @@
 
 Zaawansowany pipeline do automatycznego rozpoznawania akordów z plików audio (CQT + CRNN). Zoptymalizowany pod GPU z architekrurą Blackwell.
 
+
+![App screenshot](images/app.png "Logo Title Text 1")
+
+
 ## Wymagania Systemowe
 * **Python**: 3.10 lub nowszy.
 * **FFmpeg**: Wymagany do dekodowania audio (musi być w systemowym PATH) Pobierz [tutaj](https://ffmpeg.org/download.html).
@@ -24,6 +28,18 @@ Zaawansowany pipeline do automatycznego rozpoznawania akordów z plików audio (
    ```bash 
    pip install -r requirements.txt
    ```
+
+> Large files note: If your repository contains large assets (images, pretrained weights, dataset files), consider using Git LFS to avoid bloating the Git history. To enable and track files with LFS:
+
+```bash
+git lfs install
+git lfs track "*.pth"
+git lfs track "out/**"
+git add .gitattributes
+git commit -m "Enable git-lfs for large artifacts"
+```
+
+Alternatively, host large binaries externally (private storage, S3, or artifact server) and reference them in the README.
 
 ## Workflow Wykonawczy
 
