@@ -90,6 +90,12 @@ class TrainConfig:
     AUGMENT_TRANSPOSE_MIN: int = -6  # Min liczba poltonow do transponowania
     AUGMENT_TRANSPOSE_MAX: int = 6  # Max liczba poltonow do transponowania
 
+    # Music-aware loss (soft-label smoothing based on chord similarity)
+    MUSIC_AWARE_LOSS_ENABLED: bool = False
+    MUSIC_LOSS_ALPHA: float = 0.3  # weight of soft-label loss (0..1)
+    MUSIC_LOSS_TEMPERATURE: float = 0.3
+    MUSIC_LOSS_TOPK: int | None = 12  # optionally truncate similarity to top-K (None = no truncation)
+
 @dataclass
 class BuilderConfig:
     CQT_METHOD: str = 'cqt' # 'cqt' lub 'cqt_fast'
