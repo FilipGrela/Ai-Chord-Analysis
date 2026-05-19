@@ -7,6 +7,7 @@ from backend.dsp.src.cqtTransform import CqtTransform
 from backend.dsp.src.hpssFilter import HpssFilter
 from backend.dsp.src.pipeline import Pipeline
 from backend.logger.logger import Logger
+from backend.event_system.event_bus import event_bus, LogLevel
 
 logger = Logger(__name__)
 
@@ -177,6 +178,7 @@ class AudioProcessor:
                              apply_whitening=None, apply_smoothing=None,
                              apply_hpss=None, **kwargs) -> np.ndarray:
 
+        event_bus.log_message.emit(LogLevel.INFO, "Spectrogram: Przygotowywanie filtrów")
         if apply_denoise is None:
             apply_denoise = self.default_apply_denoise
         if apply_short_noises is None:
@@ -190,10 +192,12 @@ class AudioProcessor:
 
         audio_data = self._prepare_audio_float32(audio_data)
 
-        # Dodane bo reczny CQT juz ma 
+        # Dodane bo reczny CQT juz ma
         if apply_hpss and method != 'pipeline' and method != 'cqt':
             audio_data = self.apply_hpss_filter(audio_data)
 
+        event_bus.progress_updated.emit(10, "Generowanie spektrogramu")
+        event_bus.log_message.emit(LogLevel.INFO, "Spectrogram: Rozpoczynanie generowania spektrogramu")
         if method == 'cqt':
             # Reczna implementacja CQT (wolniejsza ale lepsza)
             spectrogram = self.calculate_spectogram_cqt(audio_data, **kwargs)
@@ -208,6 +212,10 @@ class AudioProcessor:
         else:
             raise ValueError(f"Nieznana metoda: {method}")
 
+        event_bus.log_message.emit(LogLevel.SUCCESS, f"Spectrogram: Wygenerowano spektrogram dla ścieżki audio")
+        event_bus.progress_updated.emit(30, "Wygenerowano spektrogram")
+
+        event_bus.log_message.emit(LogLevel.INFO, "Spectrogram: Aplikowanie filtrów do spektrogramu")
         # Opcjonalne filtry do nałożenia
         if apply_denoise:
             spectrogram = self.denoise_normalize_audio(spectrogram)
@@ -217,5 +225,6 @@ class AudioProcessor:
             spectrogram = self.spectral_whitening(spectrogram)
         if apply_smoothing:
             spectrogram = self.smooth_harmonics(spectrogram)
+        event_bus.progress_updated.emit(45, "Nałożono filtry na spektrogram")
 
         return spectrogram

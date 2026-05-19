@@ -8,3 +8,6 @@ scikit-learn
 librosa
 colorlog
 optuna
+
+PyQt6
+pyqt6-sip

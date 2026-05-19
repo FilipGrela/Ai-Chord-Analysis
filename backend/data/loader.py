@@ -11,33 +11,77 @@ from backend.config import cfg_train
 logger = Logger(__name__)
 
 class ChordDataset(Dataset):
-    """Pojedynczy pojemnik PyTorch na dane ułożone w pamięci RAM.
+    """Memory-efficient dataset that loads spectrogram files on-demand.
 
-    Wersja rozszerzona o opcjonalny pipeline augmentacji, który działa online
-    na spektrogramach przed zwróceniem próbki (stosować jedynie dla train).
+    Zamiast wczytywać wszystkie dane do RAM, ładuje każdy plik spektrogramu
+    przy dostępie do próbki. Wersja rozszerzona o opcjonalny pipeline augmentacji,
+    który działa online na spektrogramach przed zwróceniem próbki (dla train).
     """
 
-    def __init__(self, X_data: np.ndarray, y_data: np.ndarray, augment_pipeline=None):
-        # Dodajemy pusty wymiar kanału (C=1) wymagany przez Conv2d: (Batch, 1, seq_len, 84)
-        self.X = torch.tensor(X_data, dtype=torch.float32).unsqueeze(1)
-        self.y = torch.tensor(y_data, dtype=torch.long)
+    def __init__(self, x_files: list[str], y_files: list[str], augment_pipeline=None):
+        """
+        Args:
+            x_files: lista ścieżek do plików _X.npy
+            y_files: lista ścieżek do plików _y.npy (muszą być w tej samej kolejności)
+            augment_pipeline: opcjonalny pipeline augmentacji
+        """
+        if len(x_files) != len(y_files):
+            raise ValueError("Liczba plików X i y musi być równa!")
+        
+        self.x_files = x_files
+        self.y_files = y_files
         self.augment_pipeline = augment_pipeline
-
+        
+        # Pre-compute indices: dla każdego pliku wiemy, ile ma próbek
+        self.file_indices = []  # [(file_idx, sample_idx_in_file), ...]
+        self.file_lengths = []  # ile próbek w każdym pliku
+        
+        for i, y_file in enumerate(y_files):
+            try:
+                y_data = np.load(y_file, allow_pickle=False)
+                num_samples = len(y_data)
+                self.file_lengths.append(num_samples)
+                for sample_idx in range(num_samples):
+                    self.file_indices.append((i, sample_idx))
+            except Exception as e:
+                logger.error(f"Błąd wczytywania {y_file}: {e}")
+                raise
+    
     def __len__(self):
-        return len(self.y)
+        return len(self.file_indices)
 
     def __getitem__(self, idx):
-        x = self.X[idx]
-        if self.augment_pipeline is not None:
-            try:
-                x = self.augment_pipeline(x)
-            except Exception as e:
-                # W razie błędu w augmentacji zwracamy oryginalne dane (bez przerywania treningu)
-                logger.error(f"Błąd podczas aplikowania augmentacji — zwracam oryginalną próbkę. Szczegóły: {e}")
-        return x, self.y[idx]
+        file_idx, sample_idx = self.file_indices[idx]
+        
+        # Wczytaj spektrogram i etykietę z pliku (cached w OS buffer)
+        try:
+            X_file = np.load(self.x_files[file_idx], allow_pickle=False)
+            y_file = np.load(self.y_files[file_idx], allow_pickle=False)
+            
+            x = X_file[sample_idx]  # (seq_len, num_bins)
+            y = y_file[sample_idx]  # skalar
+            
+            # Dodaj wymiar kanału dla Conv2d: (1, seq_len, 84)
+            x = torch.tensor(x, dtype=torch.float32).unsqueeze(0)
+            y = torch.tensor(y, dtype=torch.long)
+            
+            if self.augment_pipeline is not None:
+                try:
+                    x = self.augment_pipeline(x)
+                except Exception as e:
+                    logger.error(f"Błąd podczas augmentacji: {e}")
+                    # Zwróć bez augmentacji
+            
+            return x, y
+        except Exception as e:
+            logger.error(f"Błąd wczytywania próbki {idx} (file {file_idx}, sample {sample_idx}): {e}")
+            raise
 
 class DataLoaderFactory:
-    """Fabryka produkująca gotowe paczki danych (Batches) dla modelu."""
+    """Fabryka produkująca gotowe paczki danych (Batches) dla modelu.
+    
+    Używa on-demand ładowania danych zamiast wczytywania wszystkiego do RAM.
+    """
 
     @staticmethod
     def _is_offline_transposed(path: str) -> bool:
@@ -60,7 +104,7 @@ class DataLoaderFactory:
         
         if not x_files or len(x_files) != len(y_files):
             raise ValueError(f"Błąd danych w {data_dir}. Zgodność plików X i y została naruszona.")
-            
+        
         # Dzielenie losowe, ale z ziarnem (random_state=42), aby przy każdym 
         # odpaleniu skryptu zbiór walidacyjny zawierał dokładnie te same utwory
         x_train_files, x_val_files, y_train_files, y_val_files = train_test_split(
@@ -68,22 +112,19 @@ class DataLoaderFactory:
         )
         
         logger.info("--- Przygotowanie Danych ---")
-        logger.info(f"Ładowanie {len(x_train_files)} utworów do zbioru Treningowego...")
-        X_train = np.vstack([np.load(f) for f in x_train_files])
-        y_train = np.concatenate([np.load(f) for f in y_train_files])
-        
-        logger.info(f"Ładowanie {len(x_val_files)} utworów do zbioru Walidacyjnego...")
-        X_val = np.vstack([np.load(f) for f in x_val_files])
-        y_val = np.concatenate([np.load(f) for f in y_val_files])
+        logger.info(f"Ładowanie {len(x_train_files)} utworów do zbioru Treningowego (on-demand)...")
+        logger.info(f"Ładowanie {len(x_val_files)} utworów do zbioru Walidacyjnego (on-demand)...")
         
         # Zbuduj pipeline augmentacji (online) tylko dla train (jeśli włączone w cfg)
         train_pipeline = build_train_augment_pipeline(train_cfg=cfg_train)
 
-        train_dataset = ChordDataset(X_train, y_train, augment_pipeline=train_pipeline)
-        val_dataset = ChordDataset(X_val, y_val, augment_pipeline=None)
+        # Użyj memory-efficient datasetu, który ładuje pliki na bieżąco
+        train_dataset = ChordDataset(x_train_files, y_train_files, augment_pipeline=train_pipeline)
+        val_dataset = ChordDataset(x_val_files, y_val_files, augment_pipeline=None)
 
         # shuffle=True tylko dla treningu, aby sieć nie uczyła się piosenek "po kolei"
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+        # num_workers=2 pozwala na paralelne ładowanie danych
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=True)
         
         return train_loader, val_loader
