@@ -41,7 +41,7 @@ class AudioConfig:
 
 @dataclass
 class ModelConfig:
-    NUM_CLASSES: int = 25
+    NUM_CLASSES: int = -1  # Ustawiane dynamicznie na podstawie buildera
     DROPOUT_RATE: float = 0.25
     RNN_NUM_LAYERS: int = 4
     RNN_HIDDEN_SIZE: int = 192
@@ -53,7 +53,10 @@ class TrainConfig:
     BATCH_SIZE: int = 64
     EPOCHS: int = 4
     LEARNING_RATE: float = 1e-4
-    PATIENCE: int = 5
+    WEIGHT_DECAY: float = 5e-4
+    PATIENCE: int = 2
+
+    USE_OFFLINE_TRANSPOSE: bool = False # Czy używać dodatkowych próbek offline przez transponowanie (zmiana tonacji).
 
     # Augmentacja danych (MVP): działa tylko dla train dataset.
     AUGMENT_ENABLED: bool = True  # Glowny przelacznik augmentacji (True = wlaczona)
@@ -73,10 +76,10 @@ class TrainConfig:
     # SpecMask (maskowanie fragmentow spektrogramu)
     AUGMENT_SPECMASK_ENABLED: bool = True  # Czy uzywac tej augmentacji
     AUGMENT_SPECMASK_PROB: float = 0.20  # Szansa na zastosowanie dla probki (0-1)
-    AUGMENT_SPECMASK_MAX_TIME_MASKS: int = 1  # Maks. liczba masek w osi czasu
-    AUGMENT_SPECMASK_MAX_FREQ_MASKS: int = 1  # Maks. liczba masek w osi czestotliwosci
-    AUGMENT_SPECMASK_MAX_TIME_WIDTH: int = 3  # Maks. szerokosc jednej maski czasowej
-    AUGMENT_SPECMASK_MAX_FREQ_WIDTH: int = 5  # Maks. szerokosc jednej maski czestotliwosciowej
+    AUGMENT_SPECMASK_MAX_TIME_MASKS: int = 2  # Maks. liczba masek w osi czasu
+    AUGMENT_SPECMASK_MAX_FREQ_MASKS: int = 2  # Maks. liczba masek w osi czestotliwosci
+    AUGMENT_SPECMASK_MAX_TIME_WIDTH: int = 4  # Maks. szerokosc jednej maski czasowej
+    AUGMENT_SPECMASK_MAX_FREQ_WIDTH: int = 6  # Maks. szerokosc jednej maski czestotliwosciowej
 
     # Transpose (transponowanie spektrogramu - zmiana tonacji)
     AUGMENT_TRANSPOSE_ENABLED: bool = False  # Czy uzywac tej augmentacji (online)
@@ -87,6 +90,8 @@ class TrainConfig:
 @dataclass
 class BuilderConfig:
     CQT_METHOD: str = 'cqt' # 'cqt' lub 'cqt_fast'
+    MAX_WORKERS: int = 17  # Maksymalna liczba procesów do budowania datasetu (nie więcej niż liczba rdzeni CPU - 2)
+    SUPPORT_SEVENTHS: bool = False  # If True, include seventh chords (e.g., C7, Cm7) in VOCAB
 
 
 @dataclass
@@ -100,6 +105,16 @@ class AnalysisConfig:
     DATASET_SONGS: int | None = 120
 
 
+@dataclass
+class HpoConfig:
+    STUDY_NAME: str = "chord_hpo"
+    DIRECTION: str = "minimize"
+    N_TRIALS: int = 20
+    TIMEOUT_SECONDS: int | None = None
+    STORAGE_PATH: str = os.path.join(BASE_DIR, "out", "hpo", "optuna_study.db")
+    OUTPUT_DIR: str = os.path.join(BASE_DIR, "out", "hpo")
+
+
 # Instancje konfiguracji do importowania w całym projekcie
 cfg_paths = PathsConfig()
 cfg_audio = AudioConfig()
@@ -108,6 +123,15 @@ cfg_train = TrainConfig()
 cfg_builder = BuilderConfig()
 cfg_analysis = AnalysisConfig()
 cfg_logger = LoggerConfig()
+cfg_hpo = HpoConfig()
+
+
+def sync_model_config_with_builder() -> None:
+    """Keep model output size aligned with chord vocabulary settings."""
+    cfg_model.NUM_CLASSES = 169 if cfg_builder.SUPPORT_SEVENTHS else 25
+
+
+sync_model_config_with_builder()
 
 
 def get_config_snapshot() -> dict:
@@ -119,4 +143,5 @@ def get_config_snapshot() -> dict:
         "train": asdict(cfg_train),
         "builder": asdict(cfg_builder),
         "analysis": asdict(cfg_analysis),
+        "hpo": asdict(cfg_hpo),
     }

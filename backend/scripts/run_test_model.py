@@ -50,6 +50,7 @@ def run_test(checkpoint: str, batch_size: int, out_dir: str):
     all_preds = []
     all_trues = []
     all_probs = []
+    all_probs_full = []
 
     with torch.no_grad():
         for inputs, labels in val_loader:
@@ -62,6 +63,7 @@ def run_test(checkpoint: str, batch_size: int, out_dir: str):
             all_trues.extend(labels.cpu().numpy().tolist())
             # store top1 prob
             all_probs.extend(probs.cpu().numpy().max(axis=1).tolist())
+            all_probs_full.extend(probs.cpu().numpy())
 
     # save raw predictions CSV
     csv_path = os.path.join(out_dir, f"preds_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
@@ -74,7 +76,8 @@ def run_test(checkpoint: str, batch_size: int, out_dir: str):
     # compute metrics and plots
     y_true = np.array(all_trues, dtype=int)
     y_pred = np.array(all_preds, dtype=int)
-    results = ev.evaluate(y_true, y_pred)
+    y_probs = np.vstack(all_probs_full) if all_probs_full else None
+    results = ev.evaluate(y_true, y_pred, y_probs=y_probs, top_k=(1, 3))
 
     # save metrics JSON-like CSV summary
     summary_path = os.path.join(out_dir, "metrics_summary.txt")
@@ -85,6 +88,14 @@ def run_test(checkpoint: str, batch_size: int, out_dir: str):
 
     viz.plot_confusion_matrix(results['cm'], vocab, out_path=os.path.join(out_dir, 'cm.png'))
     viz.plot_per_class_metrics(results['per_class'], out_path=os.path.join(out_dir, 'per_class.png'))
+    try:
+        viz.plot_confusion_grid(results['cm'], vocab, out_path=os.path.join(out_dir, 'confusion_grid.png'), normalize=True, top_k=6)
+    except Exception as exc:
+        logger.warning(f"Failed to generate confusion grid: {exc}")
+    try:
+        viz.plot_metrics_summary(results, out_path=os.path.join(out_dir, 'metrics_summary.png'))
+    except Exception as exc:
+        logger.warning(f"Failed to generate metrics summary plot: {exc}")
 
     logger.info(f"Test finished. Outputs saved to: {out_dir}")
     logger.info(f"Raw preds CSV: {csv_path}")

@@ -16,12 +16,22 @@ logger = Logger(__name__)
 class Trainer:
     """Silnik zarządzający cyklem życia modelu (Trening, Walidacja, Checkpointing)."""
 
-    def __init__(self, model, train_loader, val_loader, criterion, device):
+    def __init__(
+        self,
+        model,
+        train_loader,
+        val_loader,
+        criterion,
+        device,
+        enable_epoch_metrics: bool = True,
+        metrics_output_dir: str | None = None,
+    ):
         self.model = model.to(device)
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.criterion = criterion
         self.device = device
+        self.enable_epoch_metrics = enable_epoch_metrics
         
         self.config = cfg_train
         self.paths = cfg_paths
@@ -30,7 +40,7 @@ class Trainer:
         self.optimizer = optim.AdamW(
             self.model.parameters(), 
             lr=self.config.LEARNING_RATE, 
-            weight_decay=5e-4
+            weight_decay=self.config.WEIGHT_DECAY
         )
         
         # Scheduler zmniejszający LR, gdy Val Loss przestaje spadać
@@ -39,11 +49,15 @@ class Trainer:
         )
 
         # Metrics / visualization
-        self.metrics_dir = os.path.join(os.getcwd(), "out", "metrics")
-        os.makedirs(self.metrics_dir, exist_ok=True)
-        self.evaluator = MetricsEvaluator(class_names=DatasetBuilder.VOCAB, output_dir=self.metrics_dir)
-        self.visualizer = MetricsVisualizer(output_dir=self.metrics_dir)
-        self.history_csv = os.path.join(self.metrics_dir, "history.csv")
+        self.metrics_dir = metrics_output_dir or os.path.join(os.getcwd(), "out", "metrics")
+        self.evaluator = None
+        self.visualizer = None
+        self.history_csv = None
+        if self.enable_epoch_metrics:
+            os.makedirs(self.metrics_dir, exist_ok=True)
+            self.evaluator = MetricsEvaluator(class_names=DatasetBuilder.VOCAB, output_dir=self.metrics_dir)
+            self.visualizer = MetricsVisualizer(output_dir=self.metrics_dir)
+            self.history_csv = os.path.join(self.metrics_dir, "history.csv")
 
     def _log_metrics(self, epoch, train_loss, train_acc, val_loss, val_acc):
         """MIEJSCE NA MLOps: W przyszłości tutaj podpinamy np. wandb.log()"""
@@ -90,10 +104,13 @@ class Trainer:
         logger.info(f"Rozpoczęcie treningu na urządzeniu: {self.device}")
         best_val_loss = float('inf')
         best_val_acc = float('-inf')
+        best_epoch = 0
         epochs_no_improve = 0
         best_model_path: Path | None = None
+        last_epoch = 0
 
         for epoch in range(1, self.config.EPOCHS + 1):
+            last_epoch = epoch
             # ================= FAZA TRENINGU =================
             self.model.train()
             running_loss, correct_train, total_train = 0.0, 0, 0
@@ -121,9 +138,10 @@ class Trainer:
             self.model.eval()
             val_loss, correct_val, total_val = 0.0, 0, 0
             
-            # collect predictions for epoch-level metrics
+            # collect predictions and probabilities for epoch-level metrics
             val_preds_all = []
             val_labels_all = []
+            val_probs_all = []
 
             with torch.no_grad():
                 for inputs, labels in self.val_loader:
@@ -132,10 +150,12 @@ class Trainer:
                     loss = self.criterion(outputs, labels)
 
                     val_loss += loss.item()
+                    probs = torch.softmax(outputs, dim=1)
                     _, predicted = torch.max(outputs.data, 1)
 
                     # collect for evaluator
                     val_preds_all.extend(predicted.cpu().numpy().tolist())
+                    val_probs_all.extend(probs.cpu().numpy())
                     val_labels_all.extend(labels.cpu().numpy().tolist())
 
                     total_val += labels.size(0)
@@ -156,6 +176,7 @@ class Trainer:
             if self._is_better_checkpoint(val_acc, val_loss, best_val_acc, best_val_loss):
                 best_val_loss = val_loss
                 best_val_acc = val_acc
+                best_epoch = epoch
                 epochs_no_improve = 0
 
                 # Generowanie nazwy z datą i skutecznością
@@ -195,29 +216,56 @@ class Trainer:
                     break
 
             # --- append epoch history and generate epoch-level metrics/plots ---
-            row = {
-                "epoch": epoch,
-                "train_loss": train_loss,
-                "train_acc": train_acc,
-                "val_loss": val_loss,
-                "val_acc": val_acc,
-                "lr": self.optimizer.param_groups[0]["lr"],
-            }
-            csv_path = self.evaluator.append_history(row, csv_name=os.path.basename(self.history_csv))
+            if self.enable_epoch_metrics and self.evaluator and self.visualizer and self.history_csv:
+                row = {
+                    "epoch": epoch,
+                    "train_loss": train_loss,
+                    "train_acc": train_acc,
+                    "val_loss": val_loss,
+                    "val_acc": val_acc,
+                    "lr": self.optimizer.param_groups[0]["lr"],
+                }
+                csv_path = self.evaluator.append_history(row, csv_name=os.path.basename(self.history_csv))
 
-            # compute per-epoch metrics on full validation set
-            y_true = np.array(val_labels_all, dtype=int)
-            y_pred = np.array(val_preds_all, dtype=int)
-            try:
-                results = self.evaluator.evaluate(y_true, y_pred)
+                # compute per-epoch metrics on full validation set
+                y_true = np.array(val_labels_all, dtype=int)
+                y_pred = np.array(val_preds_all, dtype=int)
+                y_probs = np.vstack(val_probs_all) if val_probs_all else None
+                try:
+                    results = self.evaluator.evaluate(y_true, y_pred, y_probs=y_probs, top_k=(1, 3))
 
-                # save confusion matrix + per-class metrics for this epoch
-                self.visualizer.plot_confusion_matrix(results["cm"], DatasetBuilder.VOCAB,
-                                                      out_path=os.path.join(self.metrics_dir, f"cm_epoch{epoch}.png"))
-                self.visualizer.plot_per_class_metrics(results["per_class"],
-                                                       out_path=os.path.join(self.metrics_dir, f"per_class_epoch{epoch}.png"))
+                    # save confusion matrix + per-class metrics for this epoch
+                    self.visualizer.plot_confusion_matrix(results["cm"], DatasetBuilder.VOCAB,
+                                                        out_path=os.path.join(self.metrics_dir, f"cm_epoch{epoch}.png"))
+                    self.visualizer.plot_per_class_metrics(results["per_class"],
+                                                        out_path=os.path.join(self.metrics_dir, f"per_class_epoch{epoch}.png"))
 
-                # update rolling history plot
-                self.visualizer.plot_history(csv_path, out_path=os.path.join(self.metrics_dir, "history.png"))
-            except Exception as exc:
-                logger.warning(f"Metrics generation failed for epoch {epoch}: {exc}")
+                    # grid showing, for each true class, the top-K confused predicted classes
+                    try:
+                        self.visualizer.plot_confusion_grid(
+                            results["cm"],
+                            DatasetBuilder.VOCAB,
+                            out_path=os.path.join(self.metrics_dir, f"confusion_grid_epoch{epoch}.png"),
+                            normalize=True,
+                            top_k=6,
+                        )
+                    except Exception:
+                        # non-fatal: don't break training if visualization fails
+                        logger.warning(f"Failed to generate confusion grid for epoch {epoch}")
+
+                    # update rolling history plot
+                    self.visualizer.plot_history(csv_path, out_path=os.path.join(self.metrics_dir, "history.png"))
+                    # summary metrics plot
+                    try:
+                        self.visualizer.plot_metrics_summary(results, out_path=os.path.join(self.metrics_dir, f"metrics_summary_epoch{epoch}.png"))
+                    except Exception:
+                        logger.warning(f"Failed to generate metrics summary plot for epoch {epoch}")
+                except Exception as exc:
+                    logger.warning(f"Metrics generation failed for epoch {epoch}: {exc}")
+
+        return {
+            "best_val_loss": float(best_val_loss),
+            "best_val_acc": float(best_val_acc),
+            "best_epoch": int(best_epoch),
+            "epochs_trained": int(last_epoch),
+        }
