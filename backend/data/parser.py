@@ -3,6 +3,8 @@ import json
 import re
 import os
 
+from backend.config import cfg_builder
+
 class ChordLabelParser:
     """Klasa odpowiedzialna za odczyt i normalizację etykiet akordów."""
     
@@ -29,8 +31,19 @@ class ChordLabelParser:
             
         root, quality = match.groups()
         root = cls.ENHARMONICS.get(root, root)
-        
-        if 'min' in quality or 'm' in quality and 'maj' not in quality:
+
+        support_sevenths = getattr(cfg_builder, "SUPPORT_SEVENTHS", False)
+
+        if support_sevenths:
+            # Preserve seventh chords in a compact form compatible with VOCAB.
+            # - minor seventh -> Cm7
+            # - any other seventh-ish quality -> C7
+            if '7' in quality:
+                if 'min' in quality or ('m' in quality and 'maj' not in quality):
+                    return f"{root}m7"
+                return f"{root}7"
+
+        if 'min' in quality or ('m' in quality and 'maj' not in quality):
             return f"{root}m"
         elif 'dim' in quality:
             return f"{root}m"

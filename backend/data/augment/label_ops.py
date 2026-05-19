@@ -2,6 +2,8 @@
 Operacje na etykietach akordów dla augmentacji danych.
 """
 
+from backend.config import cfg_builder
+
 class ChordTranspose:
     """Klasa do transponowania etykiet akordów."""
 
@@ -31,13 +33,26 @@ class ChordTranspose:
         if chord == 'N':
             return 'N'
 
-        # Podziel etykietę na nutę bazową i typ akordu (major/minor)
-        if chord.endswith('m'):
-            base_note = chord[:-1]
-            is_minor = True
+        # Podziel etykietę na nutę bazową i typ akordu (major/minor/seventh)
+        suffix = ""
+        if getattr(cfg_builder, "SUPPORT_SEVENTHS", False):
+            if chord.endswith('m7'):
+                base_note = chord[:-2]
+                suffix = 'm7'
+            elif chord.endswith('7'):
+                base_note = chord[:-1]
+                suffix = '7'
+            elif chord.endswith('m'):
+                base_note = chord[:-1]
+                suffix = 'm'
+            else:
+                base_note = chord
         else:
-            base_note = chord
-            is_minor = False
+            if chord.endswith('m'):
+                base_note = chord[:-1]
+                suffix = 'm'
+            else:
+                base_note = chord
 
         # Znajdź obecny indeks nuty w słowniku
         if base_note not in ChordTranspose.NOTES:
@@ -51,7 +66,7 @@ class ChordTranspose:
         new_note = ChordTranspose.NOTES[new_idx]
 
         # Odbuduj etykietę akordu
-        return new_note + ('m' if is_minor else '')
+        return new_note + suffix
 
     @staticmethod
     def transpose_label_array(label_array: list, semitones: int) -> list:

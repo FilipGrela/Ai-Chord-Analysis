@@ -40,9 +40,23 @@ class DataLoaderFactory:
     """Fabryka produkująca gotowe paczki danych (Batches) dla modelu."""
 
     @staticmethod
+    def _is_offline_transposed(path: str) -> bool:
+        name = os.path.basename(path)
+        return "_T+" in name or "_T-" in name
+
+    @staticmethod
     def create_dataloaders(data_dir: str, batch_size: int, test_size: float = 0.15) -> tuple[DataLoader, DataLoader]:
-        x_files = sorted(glob.glob(os.path.join(data_dir, "*_X.npy")))
-        y_files = sorted(glob.glob(os.path.join(data_dir, "*_y.npy")))
+        x_all = sorted(glob.glob(os.path.join(data_dir, "*_X.npy")))
+        y_all = sorted(glob.glob(os.path.join(data_dir, "*_y.npy")))
+
+        if cfg_train.USE_OFFLINE_TRANSPOSE:
+            x_files = x_all
+            y_files = y_all
+            logger.info("USE_OFFLINE_TRANSPOSE=True -> używam bazowych i transponowanych próbek offline.")
+        else:
+            x_files = [p for p in x_all if not DataLoaderFactory._is_offline_transposed(p)]
+            y_files = [p for p in y_all if not DataLoaderFactory._is_offline_transposed(p)]
+            logger.info("USE_OFFLINE_TRANSPOSE=False -> pomijam pliki offline transpose (_T+N/_T-N).")
         
         if not x_files or len(x_files) != len(y_files):
             raise ValueError(f"Błąd danych w {data_dir}. Zgodność plików X i y została naruszona.")

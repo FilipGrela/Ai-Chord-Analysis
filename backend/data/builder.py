@@ -18,7 +18,18 @@ class DatasetBuilder:
     """Klasa orkiestrująca budowanie zbioru danych (Multiprocessing)."""
 
     NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-    VOCAB = NOTES + [n + 'm' for n in NOTES] + ['N']
+    # Build VOCAB optionally including seventh chords (C7, Cm7) based on config
+    if getattr(cfg_builder, 'SUPPORT_SEVENTHS', False):
+        VOCAB = (
+            NOTES
+            + [n + 'm' for n in NOTES]
+            + [n + '7' for n in NOTES]
+            + [n + 'm7' for n in NOTES]
+            + ['N']
+        )
+    else:
+        VOCAB = NOTES + [n + 'm' for n in NOTES] + ['N']
+
     CHORD_TO_INT = {chord: idx for idx, chord in enumerate(VOCAB)}
 
     def __init__(self, config_paths=cfg_paths, config_audio=cfg_audio):
@@ -286,6 +297,12 @@ class DatasetBuilder:
         # Obliczamy bezpieczną liczbę "robotników" (procesów)
         total_cores = os.cpu_count() or 4
         safe_workers = max(1, total_cores - 2) # Zawsze zostawiamy 2 wolne wątki, ale nie mniej niż 1 do pracy
+        
+        if safe_workers > cfg_builder.MAX_WORKERS:
+            safe_workers = cfg_builder.MAX_WORKERS
+            logger.warning(f"Limitowanie liczby procesów do {safe_workers} (maksimum dozwolone przez konfigurację).")
+
+        logger.warning(f"Twój system ma {total_cores} rdzeni CPU. Użyję {safe_workers} procesów do budowania datasetu.")
         
         logger.info(f"Używam {safe_workers} procesów z {total_cores} dostępnych na Twoim CPU.")
 
