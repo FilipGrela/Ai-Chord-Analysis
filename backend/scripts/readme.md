@@ -55,4 +55,16 @@ python -m backend.scripts.inspect_checkpoint --checkpoint out/model.pth
 - **Uwaga**: Jeśli nie podasz `--checkpoint`, skrypt użyje domyślnego pliku z `backend/config.py` (`cfg_paths.MODEL_SAVE_PATH`).
 - **Menu wyboru**: Jeśli w podanej lokalizacji jest kilka plików `.pth`, skrypt pokaże prostą listę numerowaną i poprosi o wybór konkretnego modelu.
 
+### 7. run_test_model.py
+**Cel:** Pełniejsza ewaluacja modelu na zbiorze walidacyjnym.
+- **Działanie**: Ładuje checkpoint, wykonuje predykcje na walidacji i generuje metryki jakości oraz wykresy.
+- **Wyjście**: CSV z predykcjami, podsumowanie metryk i wykresy confusion matrix / per-class metrics.
+- **Zastosowanie**: Przydatny do porównywania checkpointów po treningu bez uruchamiania pełnego pipeline inference.
+
+### 8. run_transpose_offline.py
+**Cel:** Offline augmentacja danych przez transpozycję.
+- **Działanie**: Generuje transponowane warianty materiału wejściowego, aby zwiększyć różnorodność danych treningowych.
+- **Wyjście**: Nowe pliki/wersje danych w zadanym zakresie półtonów.
+- **Zastosowanie**: Przygotowanie bardziej zbalansowanego zbioru do treningu i eksperymentów.
+
 ---
