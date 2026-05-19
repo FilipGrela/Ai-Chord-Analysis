@@ -4,7 +4,7 @@ import torch.optim as optim
 import shutil
 from datetime import datetime
 from tqdm import tqdm
-from backend.config import cfg_train, cfg_paths
+from backend.config import cfg_train, cfg_paths, get_config_snapshot
 from backend.logger.logger import Logger
 import os
 import numpy as np
@@ -52,6 +52,17 @@ class Trainer:
             f"Train Loss: {train_loss:.4f} (Acc: {train_acc:.2f}%) | "
             f"Val Loss: {val_loss:.4f} (Acc: {val_acc:.2f}%)"
         )
+
+    def _build_checkpoint_payload(self, epoch: int, val_acc: float, val_loss: float) -> dict:
+        return {
+            "state_dict": self.model.state_dict(),
+            "metadata": {
+                "epoch": epoch,
+                "val_acc": float(val_acc),
+                "val_loss": float(val_loss),
+                "config": get_config_snapshot(),
+            },
+        }
 
     @staticmethod
     def _is_better_checkpoint(
@@ -157,7 +168,8 @@ class Trainer:
                 model_name = f"{filename}_{date_str}_acc{val_acc:.2f}{extension}"
                 model_path = dir_path / model_name
 
-                torch.save(self.model.state_dict(), str(model_path))
+                checkpoint_payload = self._build_checkpoint_payload(epoch, val_acc, val_loss)
+                torch.save(checkpoint_payload, str(model_path))
                 shutil.copy2(model_path, base_path)
 
                 if best_model_path and best_model_path != model_path and best_model_path.exists():

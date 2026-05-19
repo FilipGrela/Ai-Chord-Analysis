@@ -1,5 +1,5 @@
 import os
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 # Dynamiczne ustalenie głównego folderu projektu (AI-CHORD-ANALYSIS),
 # niezależnie od tego, z jakiego miejsca w terminalu odpalisz skrypt.
@@ -108,3 +108,15 @@ cfg_train = TrainConfig()
 cfg_builder = BuilderConfig()
 cfg_analysis = AnalysisConfig()
 cfg_logger = LoggerConfig()
+
+
+def get_config_snapshot() -> dict:
+    return {
+        "logger": asdict(cfg_logger),
+        "paths": asdict(cfg_paths),
+        "audio": asdict(cfg_audio),
+        "model": asdict(cfg_model),
+        "train": asdict(cfg_train),
+        "builder": asdict(cfg_builder),
+        "analysis": asdict(cfg_analysis),
+    }

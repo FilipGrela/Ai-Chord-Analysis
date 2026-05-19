@@ -44,4 +44,15 @@ Wszystkie skrypty należy wywoływać z GŁÓWNEGO FOLDERU projektu (root), aby 
 	- eksport wyników do prostego `HTML`
 - **Zastosowanie**: Służy jako szybki punkt wejścia do sprawdzenia, czy dane są muzycznie spójne i jak można je później wykorzystać do transpozycji oraz balansowania klas.
 
+### 6. inspect_checkpoint.py
+**Cel:** Podgląd zapisanych metadanych i pełnego configu z checkpointu modelu.
+- **Działanie**: Ładuje plik `.pth`, wykrywa nowy format checkpointu z `metadata` i wypisuje pełny snapshot konfiguracji.
+- **Wyjście**: Czytelny podgląd sekcji `logger`, `paths`, `audio`, `model`, `train`, `builder` i `analysis` zapisanych przy treningu.
+- **Użycie**:
+```bash
+python -m backend.scripts.inspect_checkpoint --checkpoint out/model.pth
+```
+- **Uwaga**: Jeśli nie podasz `--checkpoint`, skrypt użyje domyślnego pliku z `backend/config.py` (`cfg_paths.MODEL_SAVE_PATH`).
+- **Menu wyboru**: Jeśli w podanej lokalizacji jest kilka plików `.pth`, skrypt pokaże prostą listę numerowaną i poprosi o wybór konkretnego modelu.
+
 ---

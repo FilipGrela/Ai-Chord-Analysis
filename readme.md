@@ -45,12 +45,17 @@ Wszystkie komendy uruchamiaj z głównego folderu projektu:
    python -m backend.scripts.run_training
    ```
 
-3. **Predykcja (Inference):** Analiza akordów w nowym pliku.
+3. **Podgląd checkpointu:** Sprawdzenie zapisanych metadanych i pełnego configu treningu.
+   ```bash
+   python -m backend.scripts.inspect_checkpoint --checkpoint out/model.pth
+   ```
+
+4. **Predykcja (Inference):** Analiza akordów w nowym pliku.
    ```bash
    python -m backend.scripts.run_predict
    ```
 
-4. **Diagnostyka DSP:** Interaktywne wykresy i testy filtrów.
+5. **Diagnostyka DSP:** Interaktywne wykresy i testy filtrów.
    ```bash
    python -m backend.scripts.run_single_tests
    ```

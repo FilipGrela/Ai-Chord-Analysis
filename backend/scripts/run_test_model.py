@@ -21,6 +21,12 @@ def load_model(checkpoint_path: str, device: torch.device):
     if not os.path.exists(checkpoint_path):
         raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
     state = torch.load(checkpoint_path, map_location=device)
+    if isinstance(state, dict) and "state_dict" in state:
+        metadata = state.get("metadata", {})
+        config_snapshot = metadata.get("config", {})
+        if config_snapshot:
+            logger.info(f"Checkpoint config: {config_snapshot}")
+        state = state["state_dict"]
     model.load_state_dict(state)
     model.to(device)
     model.eval()
