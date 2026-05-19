@@ -66,6 +66,11 @@ class ChordInferenceEngine:
 
         checkpoint = torch.load(load_path, map_location=self.device)
         state_dict = self._extract_state_dict(checkpoint)
+        if isinstance(checkpoint, dict):
+            metadata = checkpoint.get("metadata", {})
+            config_snapshot = metadata.get("config", {})
+            if config_snapshot:
+                logger.info(f"Checkpoint config: {config_snapshot}")
         rnn_num_layers = self._infer_rnn_layers_from_state_dict(state_dict)
 
         # Inicjalizacja modelu zgodnie z architekturą zapisaną w checkpoint.

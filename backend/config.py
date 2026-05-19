@@ -1,5 +1,5 @@
 import os
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 # Dynamiczne ustalenie głównego folderu projektu (AI-CHORD-ANALYSIS),
 # niezależnie od tego, z jakiego miejsca w terminalu odpalisz skrypt.
@@ -54,7 +54,7 @@ class ModelConfig:
 @dataclass
 class TrainConfig:
     BATCH_SIZE: int = 64
-    EPOCHS: int = 50
+    EPOCHS: int = 4
     LEARNING_RATE: float = 1e-4
     PATIENCE: int = 5
 
@@ -92,10 +92,34 @@ class BuilderConfig:
     CQT_METHOD: str = 'cqt' # 'cqt' lub 'cqt_fast'
 
 
+@dataclass
+class AnalysisConfig:
+    OUTPUT_DIR: str = os.path.join(BASE_DIR, "out", "analysis")
+    CHORD_SIMILARITY_ROOT_WEIGHT: float = 0.55
+    CHORD_SIMILARITY_QUALITY_WEIGHT: float = 0.30
+    CHORD_SIMILARITY_KEY_WEIGHT: float = 0.15
+    MUSIC_METRICS_DATA_DIR: str = os.path.join(os.path.dirname(BASE_DIR), "isophonics_dataset")
+    MUSIC_METRICS_DEFAULT_KEY: str | None = "A"
+    DATASET_SONGS: int | None = 120
+
+
 # Instancje konfiguracji do importowania w całym projekcie
 cfg_paths = PathsConfig()
 cfg_audio = AudioConfig()
 cfg_model = ModelConfig()
 cfg_train = TrainConfig()
 cfg_builder = BuilderConfig()
+cfg_analysis = AnalysisConfig()
 cfg_logger = LoggerConfig()
+
+
+def get_config_snapshot() -> dict:
+    return {
+        "logger": asdict(cfg_logger),
+        "paths": asdict(cfg_paths),
+        "audio": asdict(cfg_audio),
+        "model": asdict(cfg_model),
+        "train": asdict(cfg_train),
+        "builder": asdict(cfg_builder),
+        "analysis": asdict(cfg_analysis),
+    }
