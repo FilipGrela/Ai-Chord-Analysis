@@ -61,6 +61,11 @@ Wszystkie komendy uruchamiaj z głównego folderu projektu:
    ```bash
    python -m backend.scripts.run_single_tests
    ```
+   
+5. **Aplikacja Okienkowa (UI):** Narzędzie graficzne z odtwarzaczem do wizualizacji akordów "na żywo".
+   ```bash
+   python -m frontend.MainWindow
+   ```
 
 ## Skrypty Uruchomieniowe
 
@@ -98,4 +103,5 @@ python -m backend.scripts.run_music_metrics
 * **backend/api/**: Inferencja i ładowanie checkpointów.
 * **backend/scripts/**: Skrypty uruchomieniowe do treningu, testów, analizy i podglądu checkpointów.
 * **dataset/**: Folder na Twoje piosenki do nauki (.mp3 + .jams).
-* **out/**: Pliki wynikowe (wagi .pth, dane .npy i raporty metryk).
+* **out/**: Pliki wynikowe (wagi .pth i dane .npy).
+* **frontend/**: Aplikacja okienkowa do wizualizacji działania modelu

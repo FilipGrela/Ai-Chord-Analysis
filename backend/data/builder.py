@@ -1,6 +1,7 @@
 import numpy as np
 import glob
 import os
+import gc
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from functools import partial
 from typing import cast
@@ -60,30 +61,39 @@ class DatasetBuilder:
         """
         Funkcja tworzy zbiór sekwencji (X) i odpowiadających im etykiet (y)
         na podstawie macierzy CQT i wyrównanych etykiet klatkowych.
+        
+        Zoptymalizowana dla oszczędzania pamięci: zapisuje rezultaty w chunkami
+        zamiast akumulować wszystko w listach.
         """
         num_bins, num_frames = cqt_matrix.shape
-        X_sequences, y_labels = [], []
-        for start_idx in range(0, num_frames - seq_len + 1, hop_seq): 
-            end_idx = start_idx + seq_len
-            # Ekstrakcja wycinka nagrania o długości hop_seq. Transpozycja
-            # Tak, aby sekwencje były w formacie (seq_len, num_bins)
-            patch_t = cqt_matrix[:, start_idx:end_idx].T
-
-            # Wybranie akordu, który wybrzmiewa w środkowej części fragmentu
-            center_idx = start_idx + (seq_len // 2) 
-            label = frame_labels_int[center_idx]
-            
-
-            X_sequences.append(patch_t)
-            y_labels.append(label)
-
-        if not X_sequences:
+        
+        # Wstępnie oblicz ile będzie sekwencji
+        num_sequences = max(0, (num_frames - seq_len) // hop_seq + 1)
+        
+        if num_sequences == 0:
             return (
                 np.empty((0, seq_len, num_bins), dtype=np.float32),
                 np.empty((0,), dtype=np.int64),
             )
+        
+        # Prealokuj tablice zamiast używać list (oszczędza pamięć)
+        X_sequences = np.empty((num_sequences, seq_len, num_bins), dtype=np.float32)
+        y_labels = np.empty((num_sequences,), dtype=np.int64)
+        
+        seq_idx = 0
+        for start_idx in range(0, num_frames - seq_len + 1, hop_seq):
+            end_idx = start_idx + seq_len
+            # Ekstrakcja wycinka nagrania o długości seq_len. Transpozycja
+            # Tak, aby sekwencje były w formacie (seq_len, num_bins)
+            X_sequences[seq_idx] = cqt_matrix[:, start_idx:end_idx].T
 
-        return np.array(X_sequences), np.array(y_labels)
+            # Wybranie akordu, który wybrzmiewa w środkowej części fragmentu
+            center_idx = start_idx + (seq_len // 2)
+            y_labels[seq_idx] = frame_labels_int[center_idx]
+            
+            seq_idx += 1
+        
+        return X_sequences[:seq_idx], y_labels[:seq_idx]
 
     @staticmethod
     def _process_single_folder(folder_path: str, output_dir: str, hop_size_ms: int, seq_len: int) -> tuple[bool, str]:
@@ -139,12 +149,22 @@ class DatasetBuilder:
                 return False, f"Pominięto {folder_name}: brak poprawnego pliku etykiet"
             cqt_matrix = processor.generate_spectrogram(method=cfg_builder.CQT_METHOD, audio_data=audio_data)
 
+            # Zwolnij audio zaraz po jego użyciu — oszczędzaj RAM
+            del audio_data, processor
+            
             num_frames = cqt_matrix.shape[1]
             frame_labels_int = DatasetBuilder.align_frames_with_labels(num_frames, parsed_labels, hop_size_ms)
             X, y = DatasetBuilder.create_sequences(cqt_matrix, frame_labels_int, seq_len)
 
+            # Zwolnij spektrogram zaraz po utworzeniu sekwencji
+            del cqt_matrix, frame_labels_int
+            
             np.save(x_path, X.astype(np.float32))
             np.save(y_path, y.astype(np.int64))
+            
+            # Zwolnij sekwencje
+            del X, y
+            gc.collect()  # Wymuś garbage collection aby zwolnić RAM natychmiast
 
             return True, folder_name
         except Exception as e:
@@ -284,8 +304,10 @@ class DatasetBuilder:
         logger.info(f"Rozpoczynam zrównoleglone przetwarzanie {total_albums} albumów...")
 
         # Obliczamy bezpieczną liczbę "robotników" (procesów)
+        # Każdy proces ładuje audio i tworzy CQT, więc ograniczamy do oszczędzenia RAM
         total_cores = os.cpu_count() or 4
-        safe_workers = max(1, total_cores - 2) # Zawsze zostawiamy 2 wolne wątki, ale nie mniej niż 1 do pracy
+        # Używamy max 1/3 rdzeni, ale nie mniej niż 1, aby oszczędzić pamięć
+        safe_workers = max(1, max(total_cores // 3, 1))
         
         logger.info(f"Używam {safe_workers} procesów z {total_cores} dostępnych na Twoim CPU.")
 
