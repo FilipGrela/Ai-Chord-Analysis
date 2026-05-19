@@ -7,3 +7,5 @@ torchaudio
 scikit-learn
 librosa
 colorlog
+PyQt6
+pyqt6-sip

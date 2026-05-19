@@ -7,6 +7,7 @@ from backend.config import cfg_paths, cfg_audio
 from backend.models.crnn import ChordCRNN
 from backend.dsp.spectrograms import AudioProcessor
 from backend.logger.logger import Logger
+from backend.event_system.event_bus import event_bus, LogLevel
 
 logger = Logger(__name__)
 
@@ -138,10 +139,16 @@ class ChordInferenceEngine:
         audio_data, sr = self.processor.read_audio_universal(audio_path)
         if audio_data is None:
             raise ValueError("Błąd dekodowania FFmpeg.")
+        event_bus.log_message.emit(LogLevel.INFO, "Wczytano ścieżkę audio")
+        event_bus.progress_updated.emit(5, "Wczytano ścieżkę audio")
 
+        event_bus.log_message.emit(LogLevel.INFO, "Generowanie spektrogramu")
         cqt_matrix = self.processor.generate_spectrogram(audio_data)
+        event_bus.log_message.emit(LogLevel.SUCCESS, "Utworzono spektrogram dla ścieżki audio")
+        event_bus.progress_updated.emit(50, "Utworzono spektrogram")
 
         # 2. Pocięcie na sekwencje
+        event_bus.log_message.emit(LogLevel.INFO, "Cięcie ścieżki na sekwencje")
         X, timestamps = self._create_inference_sequences(cqt_matrix)
 
         if X.shape[0] == 0:
@@ -149,20 +156,27 @@ class ChordInferenceEngine:
                 "Plik audio jest zbyt krótki, aby utworzyć sekwencje wejściowe dla modelu. Zwracam pusty wynik."
             )
             return []
+        event_bus.progress_updated.emit(60, "Pocięto ścieżkę na sekwencję")
 
         # 3. Przygotowanie tensorów pod Conv2D: (Batch, 1, Time, Freq)
+        event_bus.log_message.emit(LogLevel.INFO, "Przygotowywanie tensorów")
         X_tensor = torch.tensor(X, dtype=torch.float32).unsqueeze(1).to(self.device)
+        event_bus.progress_updated.emit(70, "Przygotowano tensory")
 
         # 4. Szybkie wnioskowanie na GPU
+        event_bus.log_message.emit(LogLevel.INFO, "Wnioskowanie")
         with torch.no_grad():
             outputs = self.model(X_tensor)
             _, predicted = torch.max(outputs, 1)
+        event_bus.progress_updated.emit(80, "Zakończono wnioskowanie")
 
         # 5. Tłumaczenie tensorów na słownik wyników
+        event_bus.log_message.emit(LogLevel.INFO, "Tłumaczenie tensorów na słownik wyników")
         predicted_classes = predicted.cpu().numpy()
         results = [
             {"time": t, "chord": self.INT_TO_CHORD[cls_idx]}
             for t, cls_idx in zip(timestamps, predicted_classes)
         ]
+        event_bus.progress_updated.emit(90, "Utworzono słownik wyników")
 
         return self._merge_consecutive_chords(results)
