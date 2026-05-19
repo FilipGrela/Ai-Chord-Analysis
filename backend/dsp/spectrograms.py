@@ -101,6 +101,9 @@ class AudioProcessor:
         self._hpss.loadAudioArray(audio_data, self.sample_rate)
         y_harm, _ = self._hpss.extractHarmonic()
 
+        if y_harm is None:
+            return np.empty((0,), dtype=np.float32)
+
         return y_harm
 
     def smooth_harmonics(self, spectrogram: np.ndarray, kernel_size: int = 15) -> np.ndarray:
