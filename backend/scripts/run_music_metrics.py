@@ -22,6 +22,7 @@ from backend.analysis.music_metrics import (
     parse_key,
 )
 from backend.config import cfg_analysis
+from backend.analysis.visualization.segment_analysis import generate_segment_duration_graph
 
 # Bierze CSV i wyciaga timestampy oraz akord (wzorowalem sie .csv z isophonics_dataset)
 def _load_labels_csv(csv_path: Path) -> list[tuple[float, float, str]]:
@@ -92,6 +93,7 @@ def _export_html_report(
     transition_durations: dict[str, float],
     no_chord_count: int,
     no_chord_duration: float,
+    segment_durations: list[float],
 ) -> None:
     """Zapisuje raport analizy tylko do HTML w cfg_analysis.OUTPUT_DIR."""
     out_dir = Path(cfg_analysis.OUTPUT_DIR)
@@ -120,6 +122,12 @@ def _export_html_report(
         fh.write(f'<li><strong>mean_interval:</strong> {mean_interval}</li>')
         fh.write(f'<li><strong>std_interval:</strong> {std_interval}</li>')
         fh.write('</ul>')
+
+        fh.write('<h2>Segment Duration Distribution</h2>')
+        fh.write('<p>Graf rozkładu długości segmentów. Pokazuje czy dataset zawiera wiele ultrakrótkich akordów (długi ogon) czy rozkład jest normalny.</p>')
+        script_tag, div_tag = generate_segment_duration_graph(segment_durations)
+        fh.write(script_tag)
+        fh.write(div_tag)
 
         fh.write('<h2>Rozkład rootów (globalnie)</h2>')
         fh.write('<p>Udział rootów akordów w całym zbiorze. Procent liczony względem total_time_s.</p>')
@@ -434,6 +442,7 @@ def _process_dataset(data_dir: Path, default_key: str | None, limit: int | None)
             transition_durations=transition_durations,
             no_chord_count=no_chord_count,
             no_chord_duration=no_chord_duration,
+            segment_durations=segment_durations,
         )
     except Exception:
         pass
