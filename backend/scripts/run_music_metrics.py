@@ -14,8 +14,9 @@ if PROJECT_ROOT not in sys.path:
 
 from backend.analysis.music_metrics import (
     chord_quality,
-    chord_root,
-    chord_similarity,
+    canonical_chord_report_label,
+    canonical_transition_label,
+    canonical_note_name,
     in_key,
     interval_distance,
     parse_chord,
@@ -257,20 +258,14 @@ def _process_dataset(data_dir: Path, default_key: str | None, limit: int | None)
             file_stats[file_name]["segment_count"] += 1
             file_stats[file_name]["chords"].append(chord)
             
-            root = chord_root(chord) or "N"
-            quality = chord_quality(chord)
             parsed = parse_chord(chord)
-            if parsed.quality == "N" or parsed.root is None:
+            canonical_root = canonical_note_name(parsed.root_pc) or "N"
+            root = canonical_root
+            quality = chord_quality(chord)
+            if parsed.quality == "N" or canonical_root == "N":
                 class_label = "N"
             else:
-                # Aggregate only by major/minor
-                if parsed.is_minor is True:
-                    cls = "min"
-                elif parsed.is_minor is False:
-                    cls = "maj"
-                else:
-                    cls = "other"
-                class_label = f"{parsed.root}:{cls}"
+                class_label = canonical_chord_report_label(chord)
             if quality == "N":
                 no_chord_count += 1
                 no_chord_duration += duration
@@ -320,7 +315,7 @@ def _process_dataset(data_dir: Path, default_key: str | None, limit: int | None)
                     file_stats[file_name]["interval_distances"].append(distance)
                 
                 # Zliczaj przejścia między akordami
-                transition = f"{prev_chord} -> {chord}"
+                transition = f"{canonical_transition_label(prev_chord)} -> {canonical_transition_label(chord)}"
                 chord_transitions[transition] = chord_transitions.get(transition, 0) + 1
                 transition_durations[transition] = transition_durations.get(transition, 0.0) + duration
             
