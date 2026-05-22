@@ -64,3 +64,50 @@ def generate_segment_duration_graph(segment_durations: list[float], bin_size: fl
     # Zwracamy pusty skrypt i kompletne HTML (div + script) jako drugi element,
     # aby raport osadził go w poprawnej kolejności.
     return "", html_full
+
+
+def generate_top_class_duration_barchart(
+    class_durations: dict[str, float],
+) -> tuple[str, str]:
+    """Generuje wykres słupkowy top klas akordów wg czasu trwania.
+
+    Args:
+        class_durations: mapa klasy akordu -> łączny czas w sekundach.
+        top_n: liczba klas do pokazania.
+
+    Returns:
+        Tuple (script_tag, div_tag) - skrypt plotly i div do osadzenia w HTML.
+    """
+    if not class_durations:
+        return "", "<p>Brak danych do wykreślenia top klas.</p>"
+
+    filtered = [(k, v) for k, v in class_durations.items() if not k.endswith(':other')]
+    sorted_items = sorted(filtered, key=lambda item: item[1], reverse=True)
+    labels = [label for label, _ in sorted_items]
+    values = [value for _, value in sorted_items]
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=labels,
+        y=values,
+        marker=dict(color='rgba(60, 120, 180, 0.75)'),
+        hovertemplate='<b>Class</b>: %{x}<br><b>Total</b>: %{y:.2f}s<extra></extra>',
+    ))
+
+    fig.update_layout(
+        title=f"Top {len(labels)} Classes by Duration",
+        xaxis_title="Chord Class",
+        yaxis_title="Total Duration (s)",
+        template="plotly_white",
+        height=450,
+        margin=dict(l=60, r=30, t=60, b=120),
+    )
+    fig.update_xaxes(tickangle=-45)
+
+    html_full = fig.to_html(
+        include_plotlyjs="cdn",
+        full_html=False,
+        div_id="top_class_duration_chart",
+    )
+
+    return "", html_full
