@@ -8,6 +8,7 @@ scikit-learn
 librosa
 colorlog
 optuna
+plotly
 
 PyQt6
 pyqt6-sip
