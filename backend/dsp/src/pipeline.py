@@ -1,11 +1,17 @@
 import numpy as np
+from typing import Optional
 from .hpssFilter import HpssFilter
 from .cqtTransform import CqtTransform
+from backend.config import AudioConfig
 
 class Pipeline:
-    def __init__(self, harmonicMargin: float, percussiveMargin: float, fMin: float, fS: int, hopLength: int):
+    def __init__(self, harmonicMargin: float, percussiveMargin: float, fMin: float, fS: int, hopLength: int, binsPerOctave: Optional[int] = None, nBins: Optional[int] = None):
         self.__hpss = HpssFilter(harmonicMargin, percussiveMargin)
-        self.__cqt = CqtTransform(12, fMin, fS, hopLength)
+        if binsPerOctave is None:
+            binsPerOctave = AudioConfig.BINS_PER_OCTAVE
+        if nBins is None:
+            nBins = AudioConfig.N_BINS
+        self.__cqt = CqtTransform(binsPerOctave, fMin, fS, hopLength, nBins=nBins)
 
     def processArrayForAI(self, audioData: np.ndarray, fS: int):
         self.__hpss.loadAudioArray(audioData, fS)
@@ -27,6 +33,9 @@ class Pipeline:
     
     def processSong(self, audio: str, frames: int):
         chroma = self.processSound(audio)
+
+        if chroma is None:
+            raise ValueError("Chroma data is None. Ensure audio was loaded and processed correctly.")
 
         chromaColumns = chroma.shape[1]
 

@@ -27,10 +27,15 @@ class PathsConfig:
 @dataclass
 class AudioConfig:
     SAMPLE_RATE: int = 44100
-    HOP_SIZE_MS: int = 50
-    SEQ_LEN: int = 40
-    N_BINS: int = 84
-    BINS_PER_OCTAVE: int = 12
+    HOP_SIZE_MS: int = 93 # 50
+    SEQ_LEN: int = 86 # 40
+
+    N_BINS: int = 252 
+    BINS_PER_OCTAVE: int = 36
+    # N_BINS: int = 84
+    # BINS_PER_OCTAVE: int = 12
+
+
     F_MIN: float = 32.703
 
     HPSS_HARMONIC_MARGIN: float = 2.0
@@ -46,15 +51,15 @@ class AudioConfig:
 class ModelConfig:
     NUM_CLASSES: int = -1  # Ustawiane dynamicznie na podstawie buildera
     DROPOUT_RATE: float = 0.25
-    RNN_NUM_LAYERS: int = 4
-    RNN_HIDDEN_SIZE: int = 192
+    RNN_NUM_LAYERS: int = 2
+    RNN_HIDDEN_SIZE: int = 128
     CNN_CHANNELS: tuple = (32, 64, 128)
-    N_BINS: int = 84
+    N_BINS: int = -1  # Będzie synchronizowane z AudioConfig.N_BINS
 
 @dataclass
 class TrainConfig:
     BATCH_SIZE: int = 64
-    EPOCHS: int = 4
+    EPOCHS: int = 50
     LEARNING_RATE: float = 1e-4
     WEIGHT_DECAY: float = 5e-4
     PATIENCE: int = 2
@@ -66,23 +71,23 @@ class TrainConfig:
 
     # Random gain (zmiana glosnosci)
     AUGMENT_GAIN_ENABLED: bool = True  # Czy uzywac tej augmentacji
-    AUGMENT_GAIN_PROB: float = 0.5  # Szansa na zastosowanie dla probki (0-1)
-    AUGMENT_GAIN_DB_MIN: float = -6.0  # Minimalna zmiana glosnosci [dB]
-    AUGMENT_GAIN_DB_MAX: float = 6.0  # Maksymalna zmiana glosnosci [dB]
+    AUGMENT_GAIN_PROB: float = 0.25  # Szansa na zastosowanie dla probki (0-1)
+    AUGMENT_GAIN_DB_MIN: float = -20  # Minimalna zmiana glosnosci [dB]
+    AUGMENT_GAIN_DB_MAX: float = 30  # Maksymalna zmiana glosnosci [dB]
 
     # Additive noise (dodawanie szumu)
     AUGMENT_NOISE_ENABLED: bool = False  # Czy uzywac tej augmentacji
     AUGMENT_NOISE_PROB: float = 0.25  # Szansa na zastosowanie dla probki (0-1)
-    AUGMENT_NOISE_SNR_DB_MIN: float = 20.0  # Min SNR [dB], nizsze = wiecej szumu
+    AUGMENT_NOISE_SNR_DB_MIN: float =20.0  # Min SNR [dB], nizsze = wiecej szumu
     AUGMENT_NOISE_SNR_DB_MAX: float = 35.0  # Max SNR [dB], wyzsze = mniej szumu
 
     # SpecMask (maskowanie fragmentow spektrogramu)
     AUGMENT_SPECMASK_ENABLED: bool = True  # Czy uzywac tej augmentacji
     AUGMENT_SPECMASK_PROB: float = 0.20  # Szansa na zastosowanie dla probki (0-1)
-    AUGMENT_SPECMASK_MAX_TIME_MASKS: int = 2  # Maks. liczba masek w osi czasu
-    AUGMENT_SPECMASK_MAX_FREQ_MASKS: int = 2  # Maks. liczba masek w osi czestotliwosci
-    AUGMENT_SPECMASK_MAX_TIME_WIDTH: int = 4  # Maks. szerokosc jednej maski czasowej
-    AUGMENT_SPECMASK_MAX_FREQ_WIDTH: int = 6  # Maks. szerokosc jednej maski czestotliwosciowej
+    AUGMENT_SPECMASK_MAX_TIME_MASKS: int = 1  # Maks. liczba masek w osi czasu
+    AUGMENT_SPECMASK_MAX_FREQ_MASKS: int = 1  # Maks. liczba masek w osi czestotliwosci
+    AUGMENT_SPECMASK_MAX_TIME_WIDTH: int = 5  # Maks. szerokosc jednej maski czasowej
+    AUGMENT_SPECMASK_MAX_FREQ_WIDTH: int = 5  # Maks. szerokosc jednej maski czestotliwosciowej
 
     # Transpose (transponowanie spektrogramu - zmiana tonacji)
     AUGMENT_TRANSPOSE_ENABLED: bool = False  # Czy uzywac tej augmentacji (online)
@@ -91,7 +96,7 @@ class TrainConfig:
     AUGMENT_TRANSPOSE_MAX: int = 6  # Max liczba poltonow do transponowania
 
     # Music-aware loss (soft-label smoothing based on chord similarity)
-    MUSIC_AWARE_LOSS_ENABLED: bool = False
+    MUSIC_AWARE_LOSS_ENABLED: bool = True
     MUSIC_LOSS_ALPHA: float = 0.3  # weight of soft-label loss (0..1)
     MUSIC_LOSS_TEMPERATURE: float = 0.3
     MUSIC_LOSS_TOPK: int | None = 12  # optionally truncate similarity to top-K (None = no truncation)
@@ -136,8 +141,9 @@ cfg_hpo = HpoConfig()
 
 
 def sync_model_config_with_builder() -> None:
-    """Keep model output size aligned with chord vocabulary settings."""
+    """Keep model output size aligned with chord vocabulary settings and bin configuration."""
     cfg_model.NUM_CLASSES = 169 if cfg_builder.SUPPORT_SEVENTHS else 25
+    cfg_model.N_BINS = cfg_audio.N_BINS
 
 
 sync_model_config_with_builder()

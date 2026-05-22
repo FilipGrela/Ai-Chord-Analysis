@@ -67,12 +67,18 @@ class CqtTransform:
         return spectrogram
     
     def toChromagram(self, cqtMatrix):
-        nBins, _ = cqtMatrix.shape
-        targetBins = 84 
+        nBins, nFrames = cqtMatrix.shape
+        octaves = nBins / self.binsPerOctave
         
-        paddedCqt = np.pad(cqtMatrix, ((0, targetBins - nBins), (0, 0)), mode='constant')
+        if octaves != int(octaves):
+            raise ValueError(f"nBins ({nBins}) must be divisible by binsPerOctave ({self.binsPerOctave})")
         
-        reshaped = paddedCqt.reshape(7, 12, -1)
+        octaves = int(octaves)
+        
+        # Reshape: (nBins, nFrames) -> (octaves, bins_per_octave, nFrames)
+        reshaped = cqtMatrix.reshape(octaves, self.binsPerOctave, nFrames)
+        
+        # Sum across octaves: (octaves, bins_per_octave, nFrames) -> (bins_per_octave, nFrames)
         chromagram = reshaped.sum(axis=0)
         
         chromagram = np.log1p(100 * chromagram)

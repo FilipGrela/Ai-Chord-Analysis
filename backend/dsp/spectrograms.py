@@ -37,6 +37,8 @@ class AudioProcessor:
             fMin=self.f_min,
             fS=self.sample_rate,
             hopLength=self.hop_length,
+            binsPerOctave=self.bins_per_octave,
+            nBins=self.n_bins,
         )
 
         # Niezalezny filtr HPSS, ktory mozna uruchomic przed dowolna metoda CQT.
@@ -137,7 +139,7 @@ class AudioProcessor:
     def remove_short_noises(self, matrix: np.ndarray, min_duration_frames: int = 3) -> np.ndarray:
         _ = min_duration_frames
         cleaned = np.copy(matrix)
-        max_rows = min(12, cleaned.shape[0])
+        max_rows = min(self.n_bins, cleaned.shape[0])
         for i in range(max_rows):
             row = cleaned[i, :]
             for f in range(1, len(row) - 1):
@@ -171,7 +173,10 @@ class AudioProcessor:
 
     def create_chromagram(self, cqt_matrix: np.ndarray, threshold_percent=25) -> np.ndarray:
         _ = threshold_percent
-        return self._cqt.toChromagram(cqt_matrix)
+        result = self._cqt.toChromagram(cqt_matrix)
+        if result is None:
+            return np.empty((0, 0), dtype=np.float32)
+        return result
 
     def generate_spectrogram(self, audio_data: np.ndarray, method='cqt',
                              apply_denoise=None, apply_short_noises=None,
