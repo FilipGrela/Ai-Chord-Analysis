@@ -4,7 +4,10 @@ Moduł zawiera funkcje do generowania interaktywnych wykresów Plotly
 opartych na danych segmentów (długość, rodzaj itp.).
 """
 
+import numpy as np
 import plotly.graph_objects as go
+
+from backend.analysis.music_metrics import canonical_note_name, parse_chord
 
 
 def generate_segment_duration_graph(segment_durations: list[float], bin_size: float = 0.2) -> tuple[str, str]:
@@ -111,3 +114,139 @@ def generate_top_class_duration_barchart(
     )
 
     return "", html_full
+
+
+def generate_transition_heatmap(
+    class_labels: list[str],
+    duration_matrix: np.ndarray,
+    count_matrix: np.ndarray | None = None,
+) -> tuple[str, str]:
+    """Generuje heatmapę przejść między klasami akordów.
+
+    Args:
+        class_labels: uporządkowana lista etykiet klas na osiach.
+        duration_matrix: macierz sumy czasów trwania przejść.
+        count_matrix: opcjonalna macierz liczby przejść do hovera.
+
+    Returns:
+        Tuple (script_tag, div_tag) - skrypt plotly i div do osadzenia w HTML.
+    """
+    if duration_matrix.size == 0 or not class_labels:
+        return "", "<p>Brak danych do wykreślenia heatmapy przejść.</p>"
+
+    # Logarytmiczne skalowanie poprawia widoczność rzadszych/krótszych przejść,
+    # ale raw duration nadal pokazujemy w hoverze.
+    display_matrix = np.log1p(np.maximum(duration_matrix, 0.0))
+    colorbar_max = float(display_matrix.max()) if display_matrix.size else 0.0
+    tick_count = 5
+    display_ticks = np.linspace(0.0, colorbar_max, num=tick_count) if colorbar_max > 0 else np.array([0.0])
+    display_tick_text = [f"{np.expm1(value):.1f}s" for value in display_ticks]
+
+    customdata = None
+    hovertemplate = (
+        "<b>From</b>: %{y}<br>"
+        "<b>To</b>: %{x}<br>"
+        "<b>Duration</b>: %{z:.2f}s<extra></extra>"
+    )
+
+    if count_matrix is not None and count_matrix.shape == duration_matrix.shape:
+        total_transitions = float(np.sum(count_matrix))
+        if total_transitions > 0:
+            probabilities = count_matrix / total_transitions
+        else:
+            probabilities = np.zeros_like(count_matrix, dtype=float)
+        customdata = np.dstack((count_matrix, probabilities))
+        hovertemplate = (
+            "<b>From</b>: %{y}<br>"
+            "<b>To</b>: %{x}<br>"
+            "<b>Duration</b>: %{z:.2f}s<br>"
+            "<b>Count</b>: %{customdata[0]:.0f}<br>"
+            "<b>Probability</b>: %{customdata[1]:.2%}<extra></extra>"
+        )
+
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=display_matrix,
+            x=class_labels,
+            y=class_labels,
+            customdata=customdata,
+            colorscale="Viridis",
+            colorbar=dict(
+                title="Log(Duration)",
+                tickmode="array",
+                tickvals=display_ticks.tolist(),
+                ticktext=display_tick_text,
+            ),
+            hovertemplate=hovertemplate,
+        )
+    )
+
+    fig.update_layout(
+        title="Transition Matrix Heatmap",
+        xaxis_title="Chord N+1",
+        yaxis_title="Chord N",
+        template="plotly_white",
+        height=900,
+        margin=dict(l=110, r=30, t=70, b=180),
+    )
+    fig.update_xaxes(tickangle=-45, side="top")
+    fig.update_yaxes(autorange="reversed")
+
+    html_full = fig.to_html(
+        include_plotlyjs="cdn",
+        full_html=False,
+        div_id="transition_matrix_heatmap",
+    )
+
+    return "", html_full
+
+
+def transition_heatmap_label(chord: str) -> str:
+    parsed = parse_chord(chord)
+    canonical_root = canonical_note_name(parsed.root_pc)
+    if parsed.quality == "N" or canonical_root is None:
+        return "N"
+
+    quality = "min" if parsed.is_minor is True else "maj"
+    return f"{canonical_root}:{quality}"
+
+
+def build_transition_heatmap_matrices(
+    transition_counts: dict[str, int],
+    transition_durations: dict[str, float],
+) -> tuple[list[str], np.ndarray, np.ndarray]:
+    notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+    labels = [f"{note}:{quality}" for note in notes for quality in ("maj", "min")] + ["N"]
+    index_by_label = {label: idx for idx, label in enumerate(labels)}
+    count_matrix = np.zeros((len(labels), len(labels)), dtype=float)
+    duration_matrix = np.zeros((len(labels), len(labels)), dtype=float)
+
+    for transition, count in transition_counts.items():
+        try:
+            left, right = [part.strip() for part in transition.split("->", 1)]
+        except ValueError:
+            continue
+
+        row_label = transition_heatmap_label(left)
+        col_label = transition_heatmap_label(right)
+        row_idx = index_by_label.get(row_label)
+        col_idx = index_by_label.get(col_label)
+        if row_idx is None or col_idx is None:
+            continue
+        count_matrix[row_idx, col_idx] += float(count)
+
+    for transition, duration in transition_durations.items():
+        try:
+            left, right = [part.strip() for part in transition.split("->", 1)]
+        except ValueError:
+            continue
+
+        row_label = transition_heatmap_label(left)
+        col_label = transition_heatmap_label(right)
+        row_idx = index_by_label.get(row_label)
+        col_idx = index_by_label.get(col_label)
+        if row_idx is None or col_idx is None:
+            continue
+        duration_matrix[row_idx, col_idx] += float(duration)
+
+    return labels, count_matrix, duration_matrix

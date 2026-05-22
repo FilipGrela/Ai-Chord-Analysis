@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from collections import defaultdict
 
+import numpy as np
+
 # Pozwala uruchamiać skrypt jako plik: `python backend/scripts/run_music_metrics_demo.py`.
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if PROJECT_ROOT not in sys.path:
@@ -24,8 +26,10 @@ from backend.analysis.music_metrics import (
 )
 from backend.config import cfg_analysis
 from backend.analysis.visualization.segment_analysis import (
+    build_transition_heatmap_matrices,
     generate_segment_duration_graph,
     generate_top_class_duration_barchart,
+    generate_transition_heatmap,
 )
 
 # Bierze CSV i wyciaga timestampy oraz akord (wzorowalem sie .csv z isophonics_dataset)
@@ -104,7 +108,7 @@ def _export_html_report(
     out_dir = Path(cfg_analysis.OUTPUT_DIR)
     out_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    html_path = out_dir / f"music_metrics_{ts}.html"
+    html_path = out_dir / f"raportDatasetu_{ts}.html"
 
     with html_path.open("w", encoding="utf-8") as fh:
         fh.write('<!doctype html><html><head><meta charset="utf-8"><title>Music Metrics</title>')
@@ -175,6 +179,19 @@ def _export_html_report(
 
         fh.write('<h2>Top transitions</h2>')
         fh.write('<p>Najczęstsze przejścia pomiędzy kolejnymi akordami. Procent liczony względem liczby wszystkich przejść (count).</p>')
+        fh.write('<h3>Transition Matrix Heatmap</h3>')
+        fh.write('<p>Heatmapa pokazuje uproszczone klasy 25x25 (12 rootów * maj/min + N). Jaśniejsze pola oznaczają większą łączną długość przejść; w hoverze widać też count i prawdopodobieństwo.</p>')
+        heatmap_labels, heatmap_counts, heatmap_durations = build_transition_heatmap_matrices(
+            transition_counts,
+            transition_durations,
+        )
+        heatmap_script, heatmap_div = generate_transition_heatmap(
+            heatmap_labels,
+            heatmap_durations,
+            heatmap_counts,
+        )
+        fh.write(heatmap_script)
+        fh.write(heatmap_div)
         fh.write('<table><tr><th>Transition</th><th>Count</th><th>Percent</th></tr>')
         total_trans = sum(transition_counts.values()) if transition_counts else 0
         for t, cnt in sorted(transition_counts.items(), key=lambda x: x[1], reverse=True)[:50]:
