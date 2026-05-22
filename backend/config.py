@@ -114,9 +114,9 @@ class AnalysisConfig:
     CHORD_SIMILARITY_ROOT_WEIGHT: float = 0.55
     CHORD_SIMILARITY_QUALITY_WEIGHT: float = 0.30
     CHORD_SIMILARITY_KEY_WEIGHT: float = 0.15
-    MUSIC_METRICS_DATA_DIR: str = os.path.join(os.path.dirname(BASE_DIR), "isophonics_dataset")
+    MUSIC_METRICS_DATA_DIR: str = os.path.join(os.path.dirname(BASE_DIR), "data")
     MUSIC_METRICS_DEFAULT_KEY: str | None = "A"
-    DATASET_SONGS: int | None = 120
+    DATASET_SONGS: int | None = 1000
 
 
 @dataclass
