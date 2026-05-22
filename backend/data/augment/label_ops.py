@@ -3,6 +3,9 @@ Operacje na etykietach akordów dla augmentacji danych.
 """
 
 from backend.config import cfg_builder
+from backend.logger.logger import Logger
+
+logger = Logger(__name__)
 
 class ChordTranspose:
     """Klasa do transponowania etykiet akordów."""
@@ -80,5 +83,6 @@ class ChordTranspose:
         Returns:
             list[str] - lista transponowanych etykiet
         """
+        logger.info(f"Transponowanie etykiet: count={len(label_array)}, semitony={semitones}")
         return [ChordTranspose.transpose_chord_label(chord, semitones) for chord in label_array]
 

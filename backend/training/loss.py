@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
+from tqdm.asyncio import tqdm
 from backend.logger.logger import Logger
 
 logger = Logger(__name__)
@@ -14,7 +15,7 @@ class LossFactory:
         class_counts = np.zeros(num_classes)
         
         # Zliczanie wystąpień klas
-        for _, labels in train_loader:
+        for _, labels in tqdm(train_loader, desc="Liczenie klas w danych treningowych"):
             counts = np.bincount(labels.numpy(), minlength=num_classes)
             class_counts += counts
         

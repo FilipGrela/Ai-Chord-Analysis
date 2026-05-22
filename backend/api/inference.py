@@ -140,6 +140,7 @@ class ChordInferenceEngine:
 
     def predict(self, audio_path: str) -> list[dict]:
         """Główna metoda dla API. Przyjmuje ścieżkę, oddaje listę JSON."""
+        logger.info(f"Predict: rozpoczynam analizę pliku {audio_path}")
         # 1. Przetworzenie audio -> CQT
         audio_data, sr = self.processor.read_audio_universal(audio_path)
         if audio_data is None:
@@ -153,6 +154,7 @@ class ChordInferenceEngine:
         event_bus.progress_updated.emit(50, "Utworzono spektrogram")
 
         # 2. Pocięcie na sekwencje
+        logger.info("Tworzę sekwencje wejściowe dla modelu (sliding windows)")
         event_bus.log_message.emit(LogLevel.INFO, "Cięcie ścieżki na sekwencje")
         X, timestamps = self._create_inference_sequences(cqt_matrix)
 

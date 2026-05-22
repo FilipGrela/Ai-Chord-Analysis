@@ -162,6 +162,18 @@ def _build_objective(device: torch.device, run_root: str):
                 metrics_dir=metrics_dir,
             )
             return objective_value
+        except KeyboardInterrupt:
+            # User aborted the trial; write an 'aborted' report and re-raise to stop HPO
+            _write_trial_report(
+                trial_dir=trial_dir,
+                trial=trial,
+                result=result,
+                objective_value=None,
+                status="aborted",
+                metrics_dir=metrics_dir,
+                error_message="KeyboardInterrupt (user aborted)",
+            )
+            raise
         except Exception as exc:
             _write_trial_report(
                 trial_dir=trial_dir,
@@ -201,7 +213,26 @@ def main() -> None:
     )
 
     objective = _build_objective(device, run_root)
-    study.optimize(objective, n_trials=cfg_hpo.N_TRIALS, timeout=cfg_hpo.TIMEOUT_SECONDS)
+    try:
+        study.optimize(objective, n_trials=cfg_hpo.N_TRIALS, timeout=cfg_hpo.TIMEOUT_SECONDS)
+    except KeyboardInterrupt:
+        logger.warning("HPO przerwane przez użytkownika (KeyboardInterrupt). Zapisywanie dotychczasowych wyników...")
+        try:
+            # zapisz aktualne najlepsze parametry (jeśli istnieją)
+            if study.best_trial is not None:
+                best = {
+                    "best_value": study.best_value,
+                    "best_params": study.best_params,
+                    "best_trial_number": study.best_trial.number,
+                    "best_trial_user_attrs": getattr(study.best_trial, "user_attrs", {}),
+                }
+                best_path = os.path.join(cfg_hpo.OUTPUT_DIR, "best_params_interrupted.json")
+                with open(best_path, "w", encoding="utf-8") as f:
+                    json.dump(best, f, indent=2)
+                logger.info(f"Zapisano najlepsze parametry (przerwane): {best_path}")
+        except Exception as exc:
+            logger.error(f"Nie udało się zapisać najlepszych parametrów po przerwaniu: {exc}")
+        raise
 
     best = {
         "best_value": study.best_value,
