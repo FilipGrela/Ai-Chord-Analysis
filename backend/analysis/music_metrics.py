@@ -35,6 +35,61 @@ ENHARMONIC_TO_PC = {
 }
 
 
+def canonical_note_name(root_pc: int | None) -> str | None:
+    """Zwraca kanoniczny zapis dźwięku dla danej pitch class.
+
+    Używa zapisu z krzyżykami (C#, D#, F#, G#, A#), żeby scalić enharmonie
+    typu Eb/D# do jednej reprezentacji.
+    """
+
+    if root_pc is None:
+        return None
+    return NOTE_NAMES[root_pc % 12]
+
+
+def canonical_chord_report_label(chord: str) -> str:
+    """Zwraca kanoniczną etykietę akordu do raportu.
+
+    Root jest normalizowany po pitch class, a jakość zostaje sprowadzona do
+    maj/min tam, gdzie to możliwe. Pozostałe jakości są zachowane jako `other`.
+    """
+
+    parsed = parse_chord(chord)
+    canonical_root = canonical_note_name(parsed.root_pc)
+    if parsed.quality == "N" or canonical_root is None:
+        return "N"
+
+    if parsed.is_minor is True:
+        quality = "min"
+    elif parsed.is_minor is False:
+        quality = "maj"
+    else:
+        quality = "other"
+
+    return f"{canonical_root}:{quality}"
+
+
+def canonical_transition_label(chord: str) -> str:
+    """Zwraca etykietę przejścia z kanonicznym rootem i pełną jakością.
+
+    Minor zostaje zapisany jako `min`, a `m7` jako `min7`, żeby etykiety
+    były bardziej czytelne w HTML.
+    """
+
+    parsed = parse_chord(chord)
+    canonical_root = canonical_note_name(parsed.root_pc)
+    if parsed.quality == "N" or canonical_root is None:
+        return "N"
+
+    quality = parsed.quality
+    if quality == "m":
+        quality = "min"
+    elif quality == "m7":
+        quality = "min7"
+
+    return f"{canonical_root}:{quality}"
+
+
 # Struct akordu - potem mozna rozbudoac o 7 czy inne interwaly
 @dataclass(frozen=True)
 class ParsedChord:

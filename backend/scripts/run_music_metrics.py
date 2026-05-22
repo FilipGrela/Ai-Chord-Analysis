@@ -14,15 +14,19 @@ if PROJECT_ROOT not in sys.path:
 
 from backend.analysis.music_metrics import (
     chord_quality,
-    chord_root,
-    chord_similarity,
+    canonical_chord_report_label,
+    canonical_transition_label,
+    canonical_note_name,
     in_key,
     interval_distance,
     parse_chord,
     parse_key,
 )
 from backend.config import cfg_analysis
-from backend.analysis.visualization.segment_analysis import generate_segment_duration_graph
+from backend.analysis.visualization.segment_analysis import (
+    generate_segment_duration_graph,
+    generate_top_class_duration_barchart,
+)
 
 # Bierze CSV i wyciaga timestampy oraz akord (wzorowalem sie .csv z isophonics_dataset)
 def _load_labels_csv(csv_path: Path) -> list[tuple[float, float, str]]:
@@ -94,6 +98,7 @@ def _export_html_report(
     no_chord_count: int,
     no_chord_duration: float,
     segment_durations: list[float],
+    chord_class_durations: dict[str, float],
 ) -> None:
     """Zapisuje raport analizy tylko do HTML w cfg_analysis.OUTPUT_DIR."""
     out_dir = Path(cfg_analysis.OUTPUT_DIR)
@@ -128,6 +133,12 @@ def _export_html_report(
         script_tag, div_tag = generate_segment_duration_graph(segment_durations)
         fh.write(script_tag)
         fh.write(div_tag)
+
+        fh.write('<h2>Top Classes by Duration</h2>')
+        fh.write('<p>Posortowany malejąco wykres słupkowy dla najczęstszych klas akordów (np. G:maj, E:min). Oś Y to łączny czas w sekundach.</p>')
+        class_script, class_div = generate_top_class_duration_barchart(chord_class_durations)
+        fh.write(class_script)
+        fh.write(class_div)
 
         fh.write('<h2>Rozkład rootów (globalnie)</h2>')
         fh.write('<p>Udział rootów akordów w całym zbiorze. Procent liczony względem total_time_s.</p>')
@@ -181,6 +192,7 @@ def _process_dataset(data_dir: Path, default_key: str | None, limit: int | None)
     # Duration-based aggregations (sum of segment durations in seconds)
     root_durations: dict[str, float] = {}
     quality_durations: dict[str, float] = {}
+    chord_class_durations: dict[str, float] = {}
     interval_distances: list[int] = [] # jakie przeskoki akordowe wystepowaly
     chord_transitions: dict[str, int] = {} # najczęstsze przejścia między akordami
     transition_durations: dict[str, float] = {}
@@ -246,8 +258,14 @@ def _process_dataset(data_dir: Path, default_key: str | None, limit: int | None)
             file_stats[file_name]["segment_count"] += 1
             file_stats[file_name]["chords"].append(chord)
             
-            root = chord_root(chord) or "N"
+            parsed = parse_chord(chord)
+            canonical_root = canonical_note_name(parsed.root_pc) or "N"
+            root = canonical_root
             quality = chord_quality(chord)
+            if parsed.quality == "N" or canonical_root == "N":
+                class_label = "N"
+            else:
+                class_label = canonical_chord_report_label(chord)
             if quality == "N":
                 no_chord_count += 1
                 no_chord_duration += duration
@@ -255,6 +273,7 @@ def _process_dataset(data_dir: Path, default_key: str | None, limit: int | None)
             quality_counts[quality] = quality_counts.get(quality, 0) + 1
             root_durations[root] = root_durations.get(root, 0.0) + duration
             quality_durations[quality] = quality_durations.get(quality, 0.0) + duration
+            chord_class_durations[class_label] = chord_class_durations.get(class_label, 0.0) + duration
             file_stats[file_name]["root_counts"][root] = file_stats[file_name]["root_counts"].get(root, 0) + 1
             file_stats[file_name]["quality_counts"][quality] = file_stats[file_name]["quality_counts"].get(quality, 0) + 1
 
@@ -296,7 +315,7 @@ def _process_dataset(data_dir: Path, default_key: str | None, limit: int | None)
                     file_stats[file_name]["interval_distances"].append(distance)
                 
                 # Zliczaj przejścia między akordami
-                transition = f"{prev_chord} -> {chord}"
+                transition = f"{canonical_transition_label(prev_chord)} -> {canonical_transition_label(chord)}"
                 chord_transitions[transition] = chord_transitions.get(transition, 0) + 1
                 transition_durations[transition] = transition_durations.get(transition, 0.0) + duration
             
@@ -443,6 +462,7 @@ def _process_dataset(data_dir: Path, default_key: str | None, limit: int | None)
             no_chord_count=no_chord_count,
             no_chord_duration=no_chord_duration,
             segment_durations=segment_durations,
+            chord_class_durations=chord_class_durations,
         )
     except Exception:
         pass
