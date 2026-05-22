@@ -74,6 +74,33 @@ def _load_key_segments(jams_path: Path) -> list[tuple[float, float, str]]:
     key_segments.sort(key=lambda item: item[0])
     return key_segments
 
+
+def _load_chord_segments_jams(jams_path: Path) -> list[tuple[float, float, str]]:
+    try:
+        with jams_path.open("r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except Exception:
+        return []
+
+    chord_segments: list[tuple[float, float, str]] = []
+    for annotation in data.get("annotations", []):
+        namespace = str(annotation.get("namespace", "")).lower()
+        if "chord" not in namespace:
+            continue
+        for obs in annotation.get("data", []):
+            value = obs.get("value") or obs.get("label") or obs.get("text")
+            if value is None:
+                continue
+            try:
+                time = float(obs.get("time", 0.0))
+                duration = float(obs.get("duration", 0.0))
+            except (TypeError, ValueError):
+                continue
+            chord_segments.append((time, time + duration, str(value)))
+
+    chord_segments.sort(key=lambda item: item[0])
+    return chord_segments
+
 # Jaka tonacja wystepuje w danym momencie (na podstw. pliku .jams)
 # UWAGA - jesli brak podanej tonacji w pliku .jams bierze jak z configa
 def _match_key_for_time(time_sec: float, key_segments: list[tuple[float, float, str]], default_key: str | None) -> str | None:
@@ -83,6 +110,31 @@ def _match_key_for_time(time_sec: float, key_segments: list[tuple[float, float, 
         if start <= time_sec < end:
             return key
     return default_key
+
+
+def _is_song_folder(folder: Path) -> bool:
+    if not folder.is_dir():
+        return False
+    if (folder / "labels.csv").exists() or (folder / "annotation.jams").exists():
+        return True
+    return any(folder.glob("*.jams"))
+
+
+def _discover_song_folders(data_dir: Path) -> list[Path]:
+    folders: set[Path] = set()
+
+    # Wspieramy zarówno stare płaskie drzewa, jak i nowe korpusy zagnieżdżone.
+    for candidate in data_dir.rglob("labels.csv"):
+        folders.add(candidate.parent)
+    for candidate in data_dir.rglob("annotation.jams"):
+        folders.add(candidate.parent)
+    for candidate in data_dir.rglob("*.jams"):
+        folders.add(candidate.parent)
+
+    if _is_song_folder(data_dir):
+        folders.add(data_dir)
+
+    return sorted(folders)
 
 
 def _export_html_report(
@@ -232,20 +284,26 @@ def _process_dataset(data_dir: Path, default_key: str | None, limit: int | None)
     file_stats: dict[str, dict] = {} # Statystyki dla każdego pliku
     processed_tracks = 0 # Liczba piosenek
     
-    # Patrzy na folder ze wszystkimi piosenkami i zbiera .csv oraz .jams
-    folders = [path for path in data_dir.iterdir() if path.is_dir()]
+    # Szukamy folderów utworów rekurencyjnie, żeby obsłużyć całe /data.
+    folders = _discover_song_folders(data_dir)
     for folder in sorted(folders):
         if limit is not None and processed_tracks >= limit:
             break
         
-        # Szukamy .csv oraz .jams
+        # Szukamy lokalnego formatu CSV albo JAMS.
         labels_path = folder / "labels.csv"
-        jams_path = next(iter(folder.glob("*.jams")), None)
-        if not labels_path.exists():
+        jams_path = folder / "annotation.jams"
+        if not jams_path.exists():
+            jams_path = next(iter(folder.glob("*.jams")), None)
+
+        # Wczytujemy segmenty z CSV albo z JAMS.
+        if labels_path.exists():
+            segments = _load_labels_csv(labels_path)
+        elif jams_path is not None and jams_path.exists():
+            segments = _load_chord_segments_jams(jams_path)
+        else:
             continue
 
-        # jak znajdzie to laduje je do pamieci
-        segments = _load_labels_csv(labels_path)
         if not segments:
             continue
 

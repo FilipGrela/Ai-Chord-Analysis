@@ -56,6 +56,7 @@ def generate_segment_duration_graph(segment_durations: list[float], bin_size: fl
         height=400,
         showlegend=False,
     )
+    fig.update_xaxes(range=[0, 40], autorange=False)
     
     # Wygeneruj HTML bez tagów <html>, <head>, <body> i zachowaj kolejność div+script.
     html_full = fig.to_html(
@@ -134,14 +135,6 @@ def generate_transition_heatmap(
     if duration_matrix.size == 0 or not class_labels:
         return "", "<p>Brak danych do wykreślenia heatmapy przejść.</p>"
 
-    # Logarytmiczne skalowanie poprawia widoczność rzadszych/krótszych przejść,
-    # ale raw duration nadal pokazujemy w hoverze.
-    display_matrix = np.log1p(np.maximum(duration_matrix, 0.0))
-    colorbar_max = float(display_matrix.max()) if display_matrix.size else 0.0
-    tick_count = 5
-    display_ticks = np.linspace(0.0, colorbar_max, num=tick_count) if colorbar_max > 0 else np.array([0.0])
-    display_tick_text = [f"{np.expm1(value):.1f}s" for value in display_ticks]
-
     customdata = None
     hovertemplate = (
         "<b>From</b>: %{y}<br>"
@@ -166,17 +159,12 @@ def generate_transition_heatmap(
 
     fig = go.Figure(
         data=go.Heatmap(
-            z=display_matrix,
+            z=duration_matrix,
             x=class_labels,
             y=class_labels,
             customdata=customdata,
             colorscale="Viridis",
-            colorbar=dict(
-                title="Log(Duration)",
-                tickmode="array",
-                tickvals=display_ticks.tolist(),
-                ticktext=display_tick_text,
-            ),
+            colorbar=dict(title="Duration (s)"),
             hovertemplate=hovertemplate,
         )
     )
