@@ -3,6 +3,7 @@ import torch.nn as nn
 import numpy as np
 from tqdm.asyncio import tqdm
 from backend.logger.logger import Logger
+from backend.config import cfg_model
 
 logger = Logger(__name__)
 
@@ -10,7 +11,9 @@ class LossFactory:
     """Klasa odpowiedzialna za produkcję zbalansowanych funkcji straty."""
 
     @staticmethod
-    def get_smoothed_weights(train_loader, num_classes: int = 25) -> torch.Tensor:
+    def get_smoothed_weights(train_loader, num_classes: int | None = None) -> torch.Tensor:
+        if num_classes is None:
+            num_classes = cfg_model.NUM_CLASSES
         logger.info("Obliczanie wygładzonych wag klas (Label Smoothing)...")
         class_counts = np.zeros(num_classes)
         
@@ -32,8 +35,10 @@ class LossFactory:
         return torch.tensor(normalized_weights, dtype=torch.float)
 
     @classmethod
-    def create_loss_function(cls, train_loader, device: torch.device, num_classes: int = 25) -> nn.Module:
+    def create_loss_function(cls, train_loader, device: torch.device, num_classes: int | None = None) -> nn.Module:
         """Tworzy i zwraca gotową do użycia funkcję CrossEntropyLoss z wagami."""
+        if num_classes is None:
+            num_classes = cfg_model.NUM_CLASSES
         weights = cls.get_smoothed_weights(train_loader, num_classes).to(device)
         from backend.config import cfg_train, cfg_analysis
         # If music-aware loss enabled, return a combined loss module

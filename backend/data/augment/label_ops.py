@@ -12,7 +12,36 @@ class ChordTranspose:
 
     NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
     NOTES_FLAT = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B']
-    VOCAB = NOTES + [n + 'm' for n in NOTES] + ['N']
+    @staticmethod
+    def _build_vocab(support_sevenths: bool = False) -> list[str]:
+        """Buduje VOCAB na podstawie flagi SUPPORT_SEVENTHS.
+        
+        Args:
+            support_sevenths: bool - czy uwzględniać akordy septymowe (C7, Cm7)
+        
+        Returns:
+            list[str] - lista akordów w słowniku
+        """
+        NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+        if support_sevenths:
+            return (
+                NOTES 
+                + [n + 'm' for n in NOTES]
+                + [n + '7' for n in NOTES]
+                + [n + 'm7' for n in NOTES]
+                + ['N']
+            )
+        else:
+            return NOTES + [n + 'm' for n in NOTES] + ['N']
+    
+    @classmethod
+    def get_vocab(cls) -> list[str]:
+        """Zwraca VOCAB dynamicznie na podstawie konfigu SUPPORT_SEVENTHS."""
+        return cls._build_vocab(getattr(cfg_builder, "SUPPORT_SEVENTHS", False))
+    
+    # Zbuduj VOCAB dynamicznie przy ładowaniu modułu
+    VOCAB = _build_vocab(getattr(cfg_builder, "SUPPORT_SEVENTHS", False))
+
 
     @staticmethod
     def transpose_chord_label(chord: str, semitones: int) -> str:

@@ -72,7 +72,7 @@ class ChordLabelParser:
         - Separator jest autodetektowany (przecinek, średnik, tabulator).
         - Wiersze za krótkie lub z błędem są pomijane.
         """
-        logger.info(f"Parsowanie CSV: {file_path}")
+        # logger.info(f"Parsowanie CSV: {file_path}")
         parsed_labels = []
         with open(file_path, 'r', encoding='utf-8') as f:
 
@@ -121,7 +121,7 @@ class ChordLabelParser:
         """
 
         # TODO: przeanalizować czy mozna użyć innych annotacji z pliku JAMS
-        logger.info(f"Parsowanie JAMS: {file_path}")
+        # logger.info(f"Parsowanie JAMS: {file_path}")
         parsed_labels = []
 
         # Ładuje plij json
