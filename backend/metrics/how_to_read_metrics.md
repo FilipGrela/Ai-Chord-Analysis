@@ -74,6 +74,11 @@ Słownik zawierający szczegółowe dane dla każdej zidentyfikowanej klasy:
     Harmoniczny kompromis między precyzją a czułością.
 *   **Support:** Liczba rzeczywistych próbek danej klasy w zbiorze. Wskazuje, jak bardzo miarodajny jest wynik F1.
 
+### Analiza Wsparcia i Pewności (Support vs Performance)
+Metoda `compute_support_vs_perf` generuje dedykowany raport CSV łączący klasyczne metryki z badaniem korelacji i pewności modelu:
+*   **Średnia Pewność (`mean_confidence`):** Obliczana jako średnia z maksymalnych wartości funkcji softmax (prawdopodobieństw) dla próbek danej klasy. Pokazuje, jak bardzo model jest "pewny swego", nawet jeśli popełnia błędy (np. model może mieć wysoką pewność dla błędnie rozpoznanego akordu).
+*   **Korelacja Spearmana (`spearman_rho` i `spearman_p`):** Mierzy statystyczną zależność pomiędzy wielkością wsparcia (ilością wystąpień klasy w zbiorze) a jej dokładnością (accuracy). Pozwala zdiagnozować, w jakim stopniu rzadsze klasy cierpią na spadek dokładności wynikający z niewystarczającej reprezentacji w danych.
+
 ### Metryki Uśrednione F1
 *   **`macro_f1`:** Średnia arytmetyczna F1 dla wszystkich klas. Niska wartość przy wysokim `accuracy` dowodzi, że model radzi sobie dobrze tylko z popularnymi akordami.
 *   **`weighted_f1`:** Średnia F1 ważona ilością wystąpień danej klasy (`support`). Lepiej odzwierciedla globalną wydajność na niezbalansowanym datasecie.
@@ -85,7 +90,7 @@ Słownik zawierający szczegółowe dane dla każdej zidentyfikowanej klasy:
 Są to unikalne metryki domenowe, bazujące na metodzie `_split_chord()`, ignorujące sztywne etykiety na rzecz zrozumienia harmonii.
 
 *   **`root_accuracy`:** Porównuje wyłącznie rdzeń (fundament) akordu (np. wyciąga 'C' z 'Cm7'). Sukces tutaj przy jednoczesnym błędzie `quality` oznacza, że model zlokalizował poprawną tonikę, ale pomylił tryb.
-*   **`quality_accuracy`:** Porównuje wyłącznie tryb/rozszerzenie ('maj', 'm', '7', 'm7'). 
+*   **`quality_accuracy`:** Porównuje wyłącznie tryb/rozszerzenie ('maj', 'm', '7', 'm7'). Zgodnie z konfiguracją `BuilderConfig` (flaga `SUPPORT_SEVENTHS`), badany słownik może zawierać standardowe 25 klas (dur/moll) lub rozszerzone 49 klas uwzględniające akordy septymowe.
 *   **`cer` (Chord Error Rate):** Najważniejsza metryka sekwencyjna. Oblicza odległość Levenshteina na skompresowanych blokach akordów:
     $$
     CER = \frac{d_{Lev}(y_{ref}, y_{pred})}{\max(1, |y_{ref}|)}
@@ -97,9 +102,11 @@ Są to unikalne metryki domenowe, bazujące na metodzie `_split_chord()`, ignoru
 
 ## 5. Wykresy i Wizualizacje
 
-*   **`history.png`:** Linie trendów funkcji strat i dokładności w czasie. Rozchodzące się nożyce między zbiorem treningowym a walidacyjnym to jednoznaczny sygnał przeuczenia.
+*   **`history.png`:** Dwuczęściowy wykres, w którym górna sekcja rysuje linie trendów funkcji strat, a dolna sekcja przedstawia krzywe dokładności (accuracy) w czasie (`train_acc`, `val_acc`). Rozchodzące się nożyce między zbiorem treningowym a walidacyjnym to jednoznaczny sygnał przeuczenia.
 *   **`cm_*.png` (Macierz Pomyłek):** Diagonala to sukcesy. Klastry poza przekątną pomagają zlokalizować, które akordy najczęściej mylą się ze sobą nawzajem.
+*   **`confusion_grid_*.png` (Siatka Najczęstszych Pomyłek):** Rysuje siatkę poziomych wykresów słupkowych dla każdej klasy rzeczywistej. Wykresy celowo ignorują trafienia idealne (self), pokazując wyłącznie top-K (domyślnie 5) najczęstszych klasyfikacji błędnych. To potężne narzędzie do analizy precyzyjnych mylonych par akordów.
 *   **`per_class_*.png`:** Słupkowy profil precyzji/czułości/F1. Szybko demaskuje najgorzej radzące sobie klasy z ogona (tail classes).
+*   **`support_vs_perf_dual_*.png` (Wykres Podwójnej Osi):** Zaawansowany wykres nałożony, w którym słupki (lewa oś) pokazują liczność klasy (support), a nałożona na nie linia (prawa oś) pokazuje dokładność klasyfikacji (accuracy). Klasy są posortowane malejąco po wsparciu, co błyskawicznie obnaża problem z mniejszościowymi klasami ("long tail").
 *   **`metrics_summary.png`:** Mini-raport jakości muzycznej i klasyfikacyjnej. Rysuje znormalizowany wynik `1 - CER`, by wyższe słupki zawsze oznaczały lepszy rezultat.
 
 ---
@@ -125,7 +132,7 @@ Jak czytać anomalie i wyciągać z nich wnioski naprawcze:
 
 Wywołanie `MetricsEvaluator.evaluate(...)` ujednolica wyniki w czytelny słownik JSON-like, gotowy do logowania na platformach MLOps (np. MLflow, W&B):
 
-```python
+```json
 {
     "accuracy": 0.845,
     "macro_f1": 0.712,
