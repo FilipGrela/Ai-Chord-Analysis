@@ -15,6 +15,8 @@ from sklearn.metrics import (
     f1_score,
 )
 from typing import List, Optional, Dict
+from backend.logger.logger import Logger
+import tqdm
 
 
 class MetricsEvaluator:
@@ -22,18 +24,25 @@ class MetricsEvaluator:
         self.class_names = list(class_names) if class_names is not None else None
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
+        self.logger = Logger(__name__)
 
     def evaluate(self, y_true: np.ndarray, y_pred: np.ndarray, y_probs: Optional[np.ndarray] = None, top_k: tuple = (1, 3)) -> Dict:
         # normalize inputs to numpy ints
         y_true = np.asarray(y_true, dtype=int)
         y_pred = np.asarray(y_pred, dtype=int)
+        self.logger.debug(f"evaluate() — samples={len(y_true)}, unique_true={len(np.unique(y_true))}, unique_pred={len(np.unique(y_pred))}")
 
+        self.logger.debug("Computing accuracy score...")
         acc = float(accuracy_score(y_true, y_pred))
+        self.logger.debug(f"Accuracy: {acc:.4f}")
 
+        self.logger.debug("Computing confusion matrix...")
         labels = range(len(self.class_names)) if self.class_names else None
         cm = confusion_matrix(y_true, y_pred, labels=labels)
         n_classes = cm.shape[0]
+        self.logger.debug(f"Confusion matrix shape: {cm.shape}")
 
+        self.logger.debug("Computing precision / recall / F1 per class...")
         p, r, f1, support = precision_recall_fscore_support(
             y_true, y_pred, labels=range(n_classes), zero_division=0
         )
@@ -43,9 +52,12 @@ class MetricsEvaluator:
         f1 = np.asarray(f1)
         support = np.asarray(support)
 
+        self.logger.debug("Computing macro and weighted F1...")
         macro_f1 = float(f1_score(y_true, y_pred, average="macro", zero_division=0))
         weighted_f1 = float(f1_score(y_true, y_pred, average="weighted", zero_division=0))
+        self.logger.debug(f"macro_f1={macro_f1:.4f}, weighted_f1={weighted_f1:.4f}")
 
+        self.logger.debug(f"Building per-class metrics dict for {n_classes} classes...")
         per_class = {}
         if self.class_names:
             names = self.class_names
@@ -83,23 +95,19 @@ class MetricsEvaluator:
         # map indices -> names
         idx_to_name = {i: (names[i] if i < len(names) else str(i)) for i in range(n_classes)}
 
-        # compute root/quality accuracy
-        roots_true = []
-        roots_pred = []
-        qual_true = []
-        qual_pred = []
-        for t_idx, p_idx in zip(y_true, y_pred):
-            t_name = idx_to_name.get(int(t_idx), str(int(t_idx)))
-            p_name = idx_to_name.get(int(p_idx), str(int(p_idx)))
-            rt, qt = _split_chord(t_name)
-            rp, qp = _split_chord(p_name)
-            roots_true.append(rt)
-            roots_pred.append(rp)
-            qual_true.append(qt)
-            qual_pred.append(qp)
+        self.logger.debug("Computing root and quality accuracy (vectorized)...")
+        name_arr = np.array([idx_to_name.get(i, str(i)) for i in range(n_classes)])
+        root_arr = np.array([_split_chord(n)[0] for n in name_arr])
+        qual_arr  = np.array([_split_chord(n)[1] for n in name_arr])
 
-        root_acc = float(np.mean([1 if a == b else 0 for a, b in zip(roots_true, roots_pred)]))
-        quality_acc = float(np.mean([1 if a == b else 0 for a, b in zip(qual_true, qual_pred)]))
+        roots_true = root_arr[y_true]
+        roots_pred = root_arr[y_pred]
+        qual_true  = qual_arr[y_true]
+        qual_pred  = qual_arr[y_pred]
+
+        root_acc    = float(np.mean(roots_true == roots_pred))
+        quality_acc = float(np.mean(qual_true  == qual_pred))
+        self.logger.debug(f"root_acc={root_acc:.4f}, quality_acc={quality_acc:.4f}")
 
         # chord error rate (sequence edit distance on collapsed sequences)
         def _collapse(seq):
@@ -110,48 +118,54 @@ class MetricsEvaluator:
                 if s != out[-1]:
                     out.append(s)
             return out
+        
+        try:
+            from rapidfuzz.distance import Levenshtein as _Lev
+            def _levenshtein(a, b):
+                return _Lev.distance(a, b)
+        except ImportError:
+            def _levenshtein(a, b):
+                # O(n) memory rolling-row implementation
+                la, lb = len(a), len(b)
+                if la == 0:
+                    return lb
+                if lb == 0:
+                    return la
+                prev = list(range(lb + 1))
+                for i in tqdm.tqdm(range(1, la + 1), desc="Computing Levenshtein distance"):
+                    curr = [i] + [0] * lb
+                    for j in range(1, lb + 1):
+                        cost = 0 if a[i - 1] == b[j - 1] else 1
+                        curr[j] = min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost)
+                    prev = curr
+                return prev[lb]
 
-        def _levenshtein(a, b):
-            # simple Levenshtein distance for sequences
-            la, lb = len(a), len(b)
-            if la == 0:
-                return lb
-            if lb == 0:
-                return la
-            dp = [[0] * (lb + 1) for _ in range(la + 1)]
-            for i in range(la + 1):
-                dp[i][0] = i
-            for j in range(lb + 1):
-                dp[0][j] = j
-            for i in range(1, la + 1):
-                for j in range(1, lb + 1):
-                    cost = 0 if a[i - 1] == b[j - 1] else 1
-                    dp[i][j] = min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost)
-            return dp[la][lb]
-
+        self.logger.debug("Collapsing chord sequences for CER computation...")
         collapsed_ref = _collapse([idx_to_name.get(int(i), str(int(i))) for i in y_true.tolist()])
         collapsed_pred = _collapse([idx_to_name.get(int(i), str(int(i))) for i in y_pred.tolist()])
+        self.logger.debug(f"Collapsed sequence lengths — ref={len(collapsed_ref)}, pred={len(collapsed_pred)}")
+        self.logger.debug("Computing Levenshtein distance (CER)...")
         edit_dist = _levenshtein(collapsed_ref, collapsed_pred)
         cer = float(edit_dist / max(1, len(collapsed_ref)))
+        self.logger.debug(f"edit_dist={edit_dist}, CER={cer:.4f}")
 
         # compute top-K accuracies if probabilities provided
+        self.logger.debug(f"Computing top-K accuracies — top_k={top_k}, y_probs shape={y_probs.shape if y_probs is not None else None}")
         topk_res = {}
         if y_probs is not None:
             try:
                 y_probs = np.asarray(y_probs)
                 ks = tuple(top_k) if isinstance(top_k, (list, tuple)) else (int(top_k),)
                 for k in ks:
-                    # get top-k indices per sample
                     topk_idx = np.argsort(y_probs, axis=1)[:, -k:]
-                    # check membership
-                    hits = 0
-                    for i, true_idx in enumerate(y_true.astype(int)):
-                        if true_idx in topk_idx[i]:
-                            hits += 1
+                    hits = int((topk_idx == y_true[:, None]).any(axis=1).sum())
                     topk_res[f"top_{k}"] = float(hits / len(y_true)) if len(y_true) > 0 else 0.0
-            except Exception:
+                    self.logger.debug(f"top_{k}_acc={topk_res[f'top_{k}']:.4f}")
+            except Exception as exc:
+                self.logger.warning(f"top-K computation failed: {exc}")
                 topk_res = {}
 
+        self.logger.debug("evaluate() complete — returning results dict.")
         return {
             "accuracy": acc,
             "cm": cm,

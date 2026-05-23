@@ -213,7 +213,9 @@ class Trainer:
 
                     # collect for evaluator
                     val_preds_all.extend(predicted.cpu().numpy().tolist())
+
                     val_probs_all.extend(probs.cpu().numpy())
+
                     val_labels_all.extend(labels.cpu().numpy().tolist())
 
                     total_val += labels.size(0)
@@ -296,17 +298,22 @@ class Trainer:
                     "lr": self.optimizer.param_groups[0]["lr"],
                 }
                 csv_path = self.evaluator.append_history(row, csv_name=os.path.basename(self.history_csv))
-
+                logger.info(f"-> Zaktualizowano historię treningu: {csv_path}")
                 # compute per-epoch metrics on full validation set
                 y_true = np.array(val_labels_all, dtype=int)
                 y_pred = np.array(val_preds_all, dtype=int)
-                y_probs = np.vstack(val_probs_all) if val_probs_all else None
+                y_probs = np.concatenate(val_probs_all, axis=0) if val_probs_all else None
+                
                 try:
+                    logger.info(f"-> Generowanie metryk i wizualizacji dla epoki {epoch}...")
                     results = self.evaluator.evaluate(y_true, y_pred, y_probs=y_probs, top_k=(1, 3))
 
+                    logger.info(f"-> Generowanie macierzy konfuzji i metryk per-klasa dla epoki {epoch}...")
                     # save confusion matrix + per-class metrics for this epoch
                     self.visualizer.plot_confusion_matrix(results["cm"], DatasetBuilder.VOCAB,
                                                         out_path=os.path.join(self.metrics_dir, f"cm_epoch{epoch}.png"))
+                    
+                    logger.info(f"-> Generowanie metryk per-klasa dla epoki {epoch}...")
                     self.visualizer.plot_per_class_metrics(results["per_class"],
                                                         out_path=os.path.join(self.metrics_dir, f"per_class_epoch{epoch}.png"))
 
@@ -315,6 +322,7 @@ class Trainer:
                         # y_true, y_pred, y_probs are numpy arrays/None as prepared above
                         svp = self.evaluator.compute_support_vs_perf(y_true, y_pred, y_prob=y_probs, class_names=DatasetBuilder.VOCAB, out_name=f"support_vs_perf_epoch{epoch}.csv")
                         csv_path = svp.get("csv_path")
+                        logger.info(f"-> Generowanie wizualizacji support-vs-perf dla epoki {epoch}...")
                         if csv_path and self.visualizer:
                             self.visualizer.plot_support_vs_perf(csv_path=csv_path, out_path=os.path.join(self.metrics_dir, f"support_vs_perf_epoch{epoch}.png"))
                     except Exception as exc_svp:
@@ -322,6 +330,7 @@ class Trainer:
 
                     # grid showing, for each true class, the top-K confused predicted classes
                     try:
+                        logger.info(f"-> Generowanie confusion grid dla epoki {epoch}...")
                         self.visualizer.plot_confusion_grid(
                             results["cm"],
                             DatasetBuilder.VOCAB,
@@ -333,10 +342,12 @@ class Trainer:
                         # non-fatal: don't break training if visualization fails
                         logger.warning(f"Failed to generate confusion grid for epoch {epoch}")
 
-                    # update rolling history plot
+                    # update rolling history 
+                    logger.info(f"-> Generowanie wykresu historii metryk dla epoki {epoch}...")
                     self.visualizer.plot_history(csv_path, out_path=os.path.join(self.metrics_dir, "history.png"))
                     # summary metrics plot
                     try:
+                        logger.info(f"-> Generowanie wykresu podsumowującego metryki dla epoki {epoch}...")
                         self.visualizer.plot_metrics_summary(results, out_path=os.path.join(self.metrics_dir, f"metrics_summary_epoch{epoch}.png"))
                     except Exception:
                         logger.warning(f"Failed to generate metrics summary plot for epoch {epoch}")

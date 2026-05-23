@@ -7,7 +7,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 @dataclass
 class LoggerConfig:
-    DEBUG: bool = False
+    DEBUG: bool = True
     FORWARD_LOG_TO_EVENTS: bool = True
     FORWARD_LOG_MIN_LEVEL: int = 5
 
