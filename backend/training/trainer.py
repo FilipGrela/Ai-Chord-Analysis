@@ -214,7 +214,7 @@ class Trainer:
                     # collect for evaluator
                     val_preds_all.extend(predicted.cpu().numpy().tolist())
 
-                    val_probs_all.extend(probs.cpu().numpy())
+                    val_probs_all.append(probs.cpu().numpy())
 
                     val_labels_all.extend(labels.cpu().numpy().tolist())
 
@@ -297,8 +297,8 @@ class Trainer:
                     "val_acc": val_acc,
                     "lr": self.optimizer.param_groups[0]["lr"],
                 }
-                csv_path = self.evaluator.append_history(row, csv_name=os.path.basename(self.history_csv))
-                logger.info(f"-> Zaktualizowano historię treningu: {csv_path}")
+                csv_path_history = self.evaluator.append_history(row, csv_name=os.path.basename(self.history_csv))
+                logger.info(f"-> Zaktualizowano historię treningu: {csv_path_history}")
                 # compute per-epoch metrics on full validation set
                 y_true = np.array(val_labels_all, dtype=int)
                 y_pred = np.array(val_preds_all, dtype=int)
@@ -321,10 +321,10 @@ class Trainer:
                     try:
                         # y_true, y_pred, y_probs are numpy arrays/None as prepared above
                         svp = self.evaluator.compute_support_vs_perf(y_true, y_pred, y_prob=y_probs, class_names=DatasetBuilder.VOCAB, out_name=f"support_vs_perf_epoch{epoch}.csv")
-                        csv_path = svp.get("csv_path")
+                        csv_path_support_vs_perf = svp.get("csv_path")
                         logger.info(f"-> Generowanie wizualizacji support-vs-perf dla epoki {epoch}...")
-                        if csv_path and self.visualizer:
-                            self.visualizer.plot_support_vs_perf(csv_path=csv_path, out_path=os.path.join(self.metrics_dir, f"support_vs_perf_epoch{epoch}.png"))
+                        if csv_path_support_vs_perf and self.visualizer:
+                            self.visualizer.plot_support_vs_perf(csv_path=csv_path_support_vs_perf, out_path=os.path.join(self.metrics_dir, f"support_vs_perf_epoch{epoch}.png"))
                     except Exception as exc_svp:
                         logger.warning(f"Support-vs-Perf generation failed for epoch {epoch}: {exc_svp}")
 
@@ -344,7 +344,7 @@ class Trainer:
 
                     # update rolling history 
                     logger.info(f"-> Generowanie wykresu historii metryk dla epoki {epoch}...")
-                    self.visualizer.plot_history(csv_path, out_path=os.path.join(self.metrics_dir, "history.png"))
+                    self.visualizer.plot_history(csv_path=csv_path_history, out_path=os.path.join(self.metrics_dir, "history.png"))
                     # summary metrics plot
                     try:
                         logger.info(f"-> Generowanie wykresu podsumowującego metryki dla epoki {epoch}...")

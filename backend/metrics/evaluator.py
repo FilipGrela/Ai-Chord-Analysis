@@ -344,7 +344,9 @@ class MetricsVisualizer:
         plt.close(fig)
         return out_path
 
-    def plot_history(self, csv_path: str, out_path: Optional[str] = None):
+    def plot_history(self, csv_path: str | None = None, out_path: Optional[str] = None):
+        if csv_path is None:
+            raise ValueError("Provide csv_path or data")
         import csv as _csv
         epochs, train_loss, val_loss, train_acc, val_acc = [], [], [], [], []
         train_ce_hard, train_kl_soft, val_ce_hard, val_kl_soft = [], [], [], []
