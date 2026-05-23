@@ -17,7 +17,7 @@ from backend.data.augment.label_ops import ChordTranspose
 
 # Transpozycja pojedynczego akordu
 ChordTranspose.transpose_chord_label('C', 1)  # -> 'C#'
-ChordTranspose.transpose_chord_label('Am', -2)  # -> 'G#m'
+ChordTranspose.transpose_chord_label('Am', -2)  # -> 'Gm'
 ChordTranspose.transpose_chord_label('N', 5)  # -> 'N' (cisza nie zmienia się)
 ```
 
@@ -101,10 +101,10 @@ Możliwe flagi:
 ### Transpozycja Spektrogramu CQT
 
 ```
-Spektrogram CQT: (num_bins=84, num_frames)
+Spektrogram CQT: (num_bins, num_frames)
                     ↓
-Przesunięcie o N półtonów = przesunięcie binów o N pozycji
-(każdy bin = 1 półton)
+Przesunięcie o N półtonów = przesunięcie binów o N * (BINS_PER_OCTAVE / 12) pozycji
+(np. przy 36 binach na oktawę: 1 półton = 3 biny)
                     ↓
 Wypełnienie zerami margines (unikana wraparound na krawędziach)
 ```

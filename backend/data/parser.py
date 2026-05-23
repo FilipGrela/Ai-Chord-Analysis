@@ -145,7 +145,6 @@ class ChordLabelParser:
         """Główny ruter rozpoznający format pliku."""
         _, ext = os.path.splitext(file_path) # Ekstrakcja rozszerzenia.
         ext = ext.lower()
-        logger.info(f"Wybieram parser dla pliku {file_path} z rozszerzeniem {ext}")
 
         if ext in ['.csv', '.txt']:
             return cls.parse_csv(file_path)

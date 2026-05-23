@@ -196,7 +196,8 @@ class DatasetBuilder:
         if semitones == 0:
             return spec
 
-        bins_to_shift = semitones % 12  # Zawijamy do zakresu ±12 półtonów (1 oktawa)
+        bins_per_semitone = cfg_audio.BINS_PER_OCTAVE / 12
+        bins_to_shift = int(round(semitones * bins_per_semitone))
 
         # Przesunięcie wzdłuż osi binów (częstotliwości)
         shifted = np.roll(spec, bins_to_shift, axis=0)

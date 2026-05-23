@@ -45,7 +45,7 @@ class AudioConfig:
     APPLY_SHORT_NOISES: bool = False
     APPLY_WHITENING: bool = False
     APPLY_SMOOTHING: bool = False
-    APPLY_HPSS: bool = False
+    APPLY_HPSS: bool = True
 
 @dataclass
 class ModelConfig:
@@ -62,7 +62,7 @@ class TrainConfig:
     EPOCHS: int = 50
     LEARNING_RATE: float = 1e-4
     WEIGHT_DECAY: float = 5e-4
-    PATIENCE: int = 2
+    PATIENCE: int = 15
 
     USE_OFFLINE_TRANSPOSE: bool = False # Czy używać dodatkowych próbek offline przez transponowanie (zmiana tonacji).
 
@@ -105,7 +105,7 @@ class TrainConfig:
 class BuilderConfig:
     CQT_METHOD: str = 'cqt' # 'cqt' lub 'cqt_fast'
     MAX_WORKERS: int = 15  # Maksymalna liczba procesów do budowania datasetu (nie więcej niż liczba rdzeni CPU - 2)
-    SUPPORT_SEVENTHS: bool = True  # If True, include seventh chords (e.g., C7, Cm7) in VOCAB
+    SUPPORT_SEVENTHS: bool = False  # If True, include seventh chords (e.g., C7, Cm7) in VOCAB
 
 
 @dataclass
