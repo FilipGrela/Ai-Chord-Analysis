@@ -1,6 +1,6 @@
 import numpy as np
 from typing import Optional
-from .hpssFilter import HpssFilter
+from .hpssFilterOptimized import HpssFilter
 from .cqtTransform import CqtTransform
 from backend.config import AudioConfig
 

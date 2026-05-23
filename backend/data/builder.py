@@ -55,16 +55,23 @@ class DatasetBuilder:
     def align_frames_with_labels(cls, num_frames: int, parsed_labels: list, hop_size_ms: int) -> np.ndarray:
         """
         Funkcja wyrównuje klatki nagrań z powstałe podczas fragmentacji przez algorytm, z tymi widocznymi w datasecie.
+        Zoptymalizowana: pre-compute time_sec array i użyj searchsorted do szybkiego wyszukiwania.
         """
-        frame_labels_int = np.full(num_frames, cls.CHORD_TO_INT['N'], dtype=np.int32) # Pusta tablica wypełniona ciszą ('N')
-        for frame_idx in range(num_frames):
-            time_sec = frame_idx * (hop_size_ms / 1000.0) # Aktualny moment w nagraniu w sekundach
-            for start, end, chord in parsed_labels:
-                if start <= time_sec < end: # Sprawdzamy, czy aktualny czas mieści się w zakresie etykiety
-                    # Przypisanie nowej sygnatury czasowej do klatki.
-                    safe_chord = chord if chord in cls.CHORD_TO_INT else 'N'
-                    frame_labels_int[frame_idx] = cls.CHORD_TO_INT[safe_chord]
-                    break
+        frame_labels_int = np.full(num_frames, cls.CHORD_TO_INT['N'], dtype=np.int32)
+        
+        # Pre-compute time_sec dla wszystkich klatek
+        frame_times = np.arange(num_frames) * (hop_size_ms / 1000.0)
+        
+        # Przetwarzaj każdą etykietę
+        for start, end, chord in parsed_labels:
+            if chord not in cls.CHORD_TO_INT:
+                chord = 'N'
+            chord_id = cls.CHORD_TO_INT[chord]
+            
+            # Znajdź wszystkie klatki w tym przedziale
+            mask = (frame_times >= start) & (frame_times < end)
+            frame_labels_int[mask] = chord_id
+        
         return frame_labels_int
 
     @classmethod
@@ -170,8 +177,8 @@ class DatasetBuilder:
             # Zwolnij spektrogram zaraz po utworzeniu sekwencji
             del cqt_matrix, frame_labels_int
             
-            np.save(x_path, X.astype(np.float32))
-            np.save(y_path, y.astype(np.int64))
+            np.save(x_path, X, allow_pickle=False)
+            np.save(y_path, y, allow_pickle=False)
             
             # Zwolnij sekwencje
             del X, y
@@ -214,6 +221,7 @@ class DatasetBuilder:
     def _transpose_sequences(cls, X: np.ndarray, y: np.ndarray, semitones: int) -> tuple[np.ndarray, np.ndarray]:
         """
         Transpozycja sekwencji spektrogramu (X) i ich etykiet (y).
+        Zoptymalizowana: pre-compute int_to_chord mapping i chord transposition.
         
         Args:
             X: np.ndarray - sekwencje spektrogramu (num_sequences, seq_len, num_bins)
@@ -226,14 +234,10 @@ class DatasetBuilder:
         if semitones == 0:
             return X, y
         
-        X_transposed = []
-        for patch in X:
-            # patch: (seq_len, num_bins)
-            # Transponuj każdy patch poprzez transpozycję spektrogramu
-            transposed_patch = cls._transpose_spectrogram(patch.T, semitones).T
-            X_transposed.append(transposed_patch)
+        X_transposed = np.empty_like(X, dtype=np.float32)
         
-        X_transposed = np.array(X_transposed, dtype=np.float32)
+        for i, patch in enumerate(X):
+            X_transposed[i] = cls._transpose_spectrogram(patch.T, semitones).T
         
         # Dla etykiet: transpozycja etykiet akordów
         int_to_chord = tuple(cls.CHORD_TO_INT.keys())
@@ -295,8 +299,8 @@ class DatasetBuilder:
                         x_out = os.path.join(self.paths.PROCESSED_DATA, f"{base_name}{suffix}_X.npy")
                         y_out = os.path.join(self.paths.PROCESSED_DATA, f"{base_name}{suffix}_y.npy")
                         
-                        np.save(x_out, X_transposed)
-                        np.save(y_out, y_transposed)
+                        np.save(x_out, X_transposed, allow_pickle=False)
+                        np.save(y_out, y_transposed, allow_pickle=False)
                         pbar.update(1)
                 
                 except Exception as e:
@@ -340,13 +344,17 @@ class DatasetBuilder:
         total_pending_tracks = 0
         album_track_map: list[tuple[str, list[str], list[str]]] = []
         for album_path in albums:
-            tracks = [f.path for f in os.scandir(album_path) if f.is_dir()]
-            pending_tracks = [
-                track for track in tracks
-                if not self._is_folder_already_processed(os.path.basename(track), self.paths.PROCESSED_DATA)
-            ]
-            total_pending_tracks += len(pending_tracks)
-            album_track_map.append((album_path, tracks, pending_tracks))
+            try:
+                tracks = [f.path for f in os.scandir(album_path) if f.is_dir()]
+                pending_tracks = [
+                    track for track in tracks
+                    if not self._is_folder_already_processed(os.path.basename(track), self.paths.PROCESSED_DATA)
+                ]
+                total_pending_tracks += len(pending_tracks)
+                album_track_map.append((album_path, tracks, pending_tracks))
+            except (OSError, PermissionError) as e:
+                logger.warning(f"Nie można skanować {album_path}: {e}")
+                continue
 
         if total_pending_tracks == 0:
             logger.info("Nie ma już nic do przeliczenia — wszystkie utwory mają gotowe pliki X/y.")

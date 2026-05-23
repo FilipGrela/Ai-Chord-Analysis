@@ -4,7 +4,7 @@ import numpy as np
 import librosa
 from backend.config import cfg_audio
 from backend.dsp.src.cqtTransform import CqtTransform
-from backend.dsp.src.hpssFilter import HpssFilter
+from backend.dsp.src.hpssFilterOptimized import HpssFilter
 from backend.dsp.src.pipeline import Pipeline
 from backend.logger.logger import Logger
 from backend.event_system.event_bus import event_bus, LogLevel

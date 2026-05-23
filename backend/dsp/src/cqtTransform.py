@@ -25,34 +25,41 @@ class CqtTransform:
             
             self.kernels.append(kernel)
 
-    def processAudio(self, audioData):
-        results = []
-
+    def processAudio(self, audioData: np.ndarray) -> np.ndarray:
         maxKernelLen = len(self.kernels[0])
-        if(len(audioData) < maxKernelLen):
+        
+        if len(audioData) < maxKernelLen:
             audioData = np.pad(audioData, (0, maxKernelLen - len(audioData)), mode='constant')
 
-        # Stala liczba ramek dla wszystkich binow (wg najdluzszego kernela),
-        # aby wynik zawsze mial ksztalt (nBins, frames).
         targetFrames = 1 + (len(audioData) - maxKernelLen) // self.hopLength
-
-        # Cache ramek dla powtarzajacych sie dlugosci kernela.
-        framedCache = {}
-    
+        
+        # Słownik do grupowania kerneli według ich długości
+        grouped_kernels = {}
         for k in range(self.nBins):
             kernel = self.kernels[k]
             nK = len(kernel)
+            if nK not in grouped_kernels:
+                grouped_kernels[nK] = []
+            grouped_kernels[nK].append((k, kernel))
 
-            if nK not in framedCache:
-                framedCache[nK] = librosa.util.frame(audioData, frame_length=nK, hop_length=self.hopLength)
+        results = np.zeros((self.nBins, targetFrames), dtype=np.float32)
 
-            frames = framedCache[nK]
-            magnitude = np.abs(np.dot(np.conj(kernel), frames))
-            magnitude = magnitude[:targetFrames]
+        for nK, items in grouped_kernels.items():
+            indices = [item[0] for item in items]
+            
+            # Konwersja do complex64, aby oszczędzić 50% pamięci RAM
+            kernel_matrix = np.vstack([item[1] for item in items]).astype(np.complex64)
+            
+            # Wyciągamy ramki audio (strided array - nie kopiuje pamięci)
+            frames = librosa.util.frame(audioData, frame_length=nK, hop_length=self.hopLength)
+            
+            # Macierzowe mnożenie zamiast pojedynczych dot-productów
+            magnitude_group = np.abs(np.matmul(np.conj(kernel_matrix), frames))
+            
+            for i, k_idx in enumerate(indices):
+                results[k_idx, :] = magnitude_group[i, :targetFrames]
 
-            results.append(magnitude)
-        
-        return np.array(results)
+        return results
     
     def toSpectrogram(self, cqtMatrix):
         cqtDb = 20 * np.log10(cqtMatrix + 1e-10)
