@@ -64,7 +64,7 @@ class TrainConfig:
     WEIGHT_DECAY: float = 5e-4
     PATIENCE: int = 15
 
-    USE_OFFLINE_TRANSPOSE: bool = False # Czy używać dodatkowych próbek offline przez transponowanie (zmiana tonacji).
+    USE_OFFLINE_TRANSPOSE: bool = True # Czy używać dodatkowych próbek offline przez transponowanie (zmiana tonacji).
 
     # Augmentacja danych (MVP): działa tylko dla train dataset.
     AUGMENT_ENABLED: bool = True  # Glowny przelacznik augmentacji (True = wlaczona)
@@ -113,6 +113,7 @@ class AnalysisConfig:
     OUTPUT_DIR: str = os.path.join(BASE_DIR, "out", "analysis")
     CHORD_SIMILARITY_ROOT_WEIGHT: float = 0.55
     CHORD_SIMILARITY_QUALITY_WEIGHT: float = 0.30
+    CHORD_SIMILARITY_EXTENSION_WEIGHT: float = 0.10
     CHORD_SIMILARITY_KEY_WEIGHT: float = 0.15
     MUSIC_METRICS_DATA_DIR: str = os.path.join(os.path.dirname(BASE_DIR), "data")
     MUSIC_METRICS_DEFAULT_KEY: str | None = "A"

@@ -2,8 +2,11 @@
 import os
 import csv
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+import seaborn as sns
 from datetime import datetime
 from sklearn.metrics import (
     accuracy_score,
@@ -172,6 +175,112 @@ class MetricsEvaluator:
             writer.writerow(row)
         return csv_path
 
+    def compute_support_vs_perf(self, y_true: np.ndarray, y_pred: np.ndarray, y_prob: Optional[np.ndarray] = None, class_names: Optional[List[str]] = None, min_support: int = 1, out_name: str | None = None) -> dict:
+        """
+        Compute per-class support and basic performance (accuracy, precision, recall, f1).
+
+        Returns a dict with:
+        - records: list of per-class dicts {class, index, support, accuracy, precision, recall, f1, mean_confidence}
+        - stats: summary stats including spearman_rho and p-value
+        - csv_path: path to written CSV
+
+        The CSV fields: class,index,support,accuracy,precision,recall,f1,mean_confidence
+        """
+        from collections import defaultdict
+        try:
+            from scipy.stats import spearmanr
+        except Exception:
+            spearmanr = None
+
+        y_true = np.asarray(y_true)
+        y_pred = np.asarray(y_pred)
+        if y_prob is not None:
+            y_prob = np.asarray(y_prob)
+
+        # determine classes
+        if class_names is not None:
+            names = list(class_names)
+            indices = list(range(len(names)))
+        else:
+            indices = np.unique(np.concatenate([y_true, y_pred])).tolist()
+            names = [str(i) for i in indices]
+
+        records = []
+        supports = []
+        accs = []
+
+        for idx, cname in zip(indices, names):
+            mask = (y_true == idx)
+            supp = int(mask.sum())
+            if supp > 0:
+                correct = int((y_pred[mask] == y_true[mask]).sum())
+                acc = float(correct / supp)
+                # precision/recall/f1: compute via contingency
+                # precision = TP / (TP + FP)
+                tp = correct
+                fp = int(((y_pred == idx) & (y_true != idx)).sum())
+                fn = int(((y_true == idx) & (y_pred != idx)).sum())
+                precision = float(tp / (tp + fp)) if (tp + fp) > 0 else float('nan')
+                recall = float(tp / (tp + fn)) if (tp + fn) > 0 else float('nan')
+                f1 = float(2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else float('nan')
+            else:
+                acc = float('nan')
+                precision = float('nan')
+                recall = float('nan')
+                f1 = float('nan')
+
+            mean_conf = float(np.nan)
+            if y_prob is not None and supp > 0:
+                # mean max-softmax confidence for samples of this class
+                probs = y_prob[mask]
+                if probs.size:
+                    mean_conf = float(np.nanmean(np.max(probs, axis=1)))
+
+            records.append({
+                "class": str(cname),
+                "index": int(idx),
+                "support": supp,
+                "accuracy": acc,
+                "precision": precision,
+                "recall": recall,
+                "f1": f1,
+                "mean_confidence": mean_conf,
+            })
+
+            if supp > 0:
+                supports.append(supp)
+                accs.append(acc)
+
+        # correlation
+        stats = {}
+        if len(supports) >= 2:
+            try:
+                if spearmanr is not None:
+                    rho, p = spearmanr(supports, accs)
+                else:
+                    rho = float(np.corrcoef(supports, accs)[0, 1])
+                    p = float('nan')
+                stats["spearman_rho"] = float(rho)
+                stats["spearman_p"] = float(p)
+            except Exception:
+                stats["spearman_rho"] = float('nan')
+                stats["spearman_p"] = float('nan')
+        else:
+            stats["spearman_rho"] = float('nan')
+            stats["spearman_p"] = float('nan')
+
+        # write CSV
+        out_name = out_name or f"support_vs_perf_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        csv_path = os.path.join(self.output_dir, out_name)
+        fieldnames = ["class", "index", "support", "accuracy", "precision", "recall", "f1", "mean_confidence"]
+        with open(csv_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for r in records:
+                writer.writerow(r)
+
+        return {"records": records, "stats": stats, "csv_path": csv_path}
+
 
 class MetricsVisualizer:
     def __init__(self, output_dir: str = "out/metrics"):
@@ -187,21 +296,13 @@ class MetricsVisualizer:
             cm_plot = cm
 
         fig, ax = plt.subplots(figsize=(10, 8))
-        im = ax.imshow(cm_plot, interpolation="nearest", cmap="Blues")
-        ax.figure.colorbar(im, ax=ax)
-        ax.set_xticks(range(len(class_names)))
-        ax.set_yticks(range(len(class_names)))
-        ax.set_xticklabels(class_names, rotation=90, fontsize=6)
-        ax.set_yticklabels(class_names, fontsize=6)
+        # Jedna linijka zamiast ręcznego rysowania siatki i pętli z tekstem
+        sns.heatmap(cm_plot, annot=True, fmt=".2f" if normalize else "g", 
+                    cmap="Blues", xticklabels=class_names, yticklabels=class_names, ax=ax,
+                    annot_kws={"size": 6}) # Automatycznie dostosuje kolor tekstu (czarny/biały)
+
         ax.set_xlabel("Predicted")
         ax.set_ylabel("True")
-        fmt = ".2f" if normalize else "d"
-        thresh = cm_plot.max() / 2.0 if cm_plot.size else 0.5
-        for i in range(cm_plot.shape[0]):
-            for j in range(cm_plot.shape[1]):
-                text = format(cm_plot[i, j], fmt)
-                ax.text(j, i, text, ha="center", va="center",
-                        color="white" if cm_plot[i, j] > thresh else "black", fontsize=5)
         plt.tight_layout()
         out_path = out_path or os.path.join(self.output_dir, f"cm_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
         fig.savefig(out_path, dpi=150)
@@ -232,6 +333,7 @@ class MetricsVisualizer:
     def plot_history(self, csv_path: str, out_path: Optional[str] = None):
         import csv as _csv
         epochs, train_loss, val_loss, train_acc, val_acc = [], [], [], [], []
+        train_ce_hard, train_kl_soft, val_ce_hard, val_kl_soft = [], [], [], []
         with open(csv_path, newline="", encoding="utf-8") as f:
             reader = _csv.DictReader(f)
             for row in reader:
@@ -240,25 +342,113 @@ class MetricsVisualizer:
                 val_loss.append(float(row.get("val_loss", np.nan)))
                 train_acc.append(float(row.get("train_acc", np.nan)))
                 val_acc.append(float(row.get("val_acc", np.nan)))
+                train_ce_hard.append(float(row.get("train_ce_hard", np.nan)))
+                train_kl_soft.append(float(row.get("train_kl_soft", np.nan)))
+                val_ce_hard.append(float(row.get("val_ce_hard", np.nan)))
+                val_kl_soft.append(float(row.get("val_kl_soft", np.nan)))
 
-        fig, ax1 = plt.subplots(figsize=(8, 4))
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 6), sharex=True)
+
         ax1.plot(epochs, train_loss, label="train_loss", color="tab:blue")
         ax1.plot(epochs, val_loss, label="val_loss", color="tab:orange")
-        ax1.set_xlabel("epoch")
+        ax1.plot(epochs, train_ce_hard, label="train_ce_hard", color="tab:blue", linestyle="--")
+        ax1.plot(epochs, val_ce_hard, label="val_ce_hard", color="tab:orange", linestyle="--")
+        ax1.plot(epochs, train_kl_soft, label="train_kl_soft", color="tab:purple", linestyle=":")
+        ax1.plot(epochs, val_kl_soft, label="val_kl_soft", color="tab:brown", linestyle=":")
         ax1.set_ylabel("loss")
-        ax1.legend(loc="upper left")
+        ax1.legend(loc="upper right", fontsize=8, ncol=2)
 
-        ax2 = ax1.twinx()
         ax2.plot(epochs, train_acc, label="train_acc", color="tab:green", linestyle="--")
         ax2.plot(epochs, val_acc, label="val_acc", color="tab:red", linestyle="--")
+        ax2.set_xlabel("epoch")
         ax2.set_ylabel("accuracy (%)")
-        lines, labels = ax1.get_legend_handles_labels()
-        lines2, labels2 = ax2.get_legend_handles_labels()
-        ax1.legend(lines + lines2, labels + labels2, loc="upper right")
+        ax2.legend(loc="upper right")
 
         plt.tight_layout()
         out_path = out_path or os.path.join(self.output_dir, f"history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
         fig.savefig(out_path, dpi=150)
+        plt.close(fig)
+        return out_path
+
+    def plot_support_vs_perf(self, csv_path: str | None = None, data: Optional[list] = None, out_path: Optional[str] = None, annotate_top: int = 8, log_x: bool = True):
+        """
+        Plot support vs accuracy scatter and binned summary.
+
+        Either provide `csv_path` (CSV produced by `compute_support_vs_perf`) or `data` as list of records.
+        """
+        import math
+
+        # load data
+        if data is None:
+            if csv_path is None:
+                raise ValueError("Provide csv_path or data")
+            import csv as _csv
+            data = []
+            with open(csv_path, newline="", encoding="utf-8") as f:
+                reader = _csv.DictReader(f)
+                for row in reader:
+                    data.append({
+                        "class": row.get("class"),
+                        "index": int(row.get("index", -1)),
+                        "support": int(row.get("support", 0)),
+                        "accuracy": float(row.get("accuracy", float('nan'))),
+                        "mean_confidence": float(row.get("mean_confidence", float('nan'))),
+                    })
+
+        supports = np.array([d["support"] for d in data], dtype=float)
+        accs = np.array([d.get("accuracy", float('nan')) for d in data], dtype=float)
+        classes = [d.get("class") for d in data]
+
+        # basic filter
+        valid_mask = ~np.isnan(accs)
+        supports_v = supports[valid_mask]
+        accs_v = accs[valid_mask]
+        classes_v = [classes[i] for i, v in enumerate(valid_mask) if v]
+
+        fig, ax = plt.subplots(figsize=(8, 5))
+        if log_x:
+            ax.set_xscale("log")
+
+        ax.scatter(supports_v, accs_v, alpha=0.8, s=40)
+        ax.set_xlabel("support (log scale)" if log_x else "support")
+        ax.set_ylabel("accuracy")
+        ax.set_ylim(0.0, 1.0)
+        ax.set_title("Support vs Accuracy per class")
+
+        # annotate top/lowest points
+        if annotate_top and len(supports_v) > 0:
+            # annotate by highest support
+            idx_sorted = np.argsort(supports_v)[-annotate_top:][::-1]
+            for i in idx_sorted:
+                ax.annotate(str(classes_v[i]), (supports_v[i], accs_v[i]), fontsize=7, xytext=(3, 3), textcoords='offset points')
+
+        # binned summary (log bins)
+        try:
+            bins = np.unique(np.logspace(math.log10(max(1, supports_v.min())), math.log10(max(1, supports_v.max())), num=6).astype(int))
+            bins = np.concatenate(([0], bins))
+        except Exception:
+            bins = np.percentile(supports_v, [0, 20, 40, 60, 80, 100])
+
+        bin_ids = np.digitize(supports_v, bins)
+        bin_means = []
+        bin_stds = []
+        bin_centers = []
+        for b in range(1, len(bins) + 1):
+            mask = bin_ids == b
+            if mask.sum() == 0:
+                bin_means.append(np.nan)
+                bin_stds.append(np.nan)
+                bin_centers.append(np.nan)
+            else:
+                bin_means.append(np.nanmean(accs_v[mask]))
+                bin_stds.append(np.nanstd(accs_v[mask]))
+                bin_centers.append(np.nanmean(supports_v[mask]))
+
+        # plot bin means as line
+        ax.errorbar(bin_centers, bin_means, yerr=bin_stds, fmt='-o', color='#ff7f0e')
+
+        out_path = out_path or os.path.join(self.output_dir, f"support_vs_perf_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
+        fig.savefig(out_path, dpi=150, bbox_inches='tight')
         plt.close(fig)
         return out_path
 
@@ -344,23 +534,55 @@ class MetricsVisualizer:
         return out_path
 
     def plot_metrics_summary(self, results: Dict, out_path: Optional[str] = None):
-        """Plot a small summary bar chart with accuracy, root_accuracy, quality_accuracy and CER."""
-        labels = ["accuracy", "root_acc", "quality_acc", "CER"]
-        acc = results.get("accuracy", 0.0)
-        root = results.get("root_accuracy", 0.0)
-        qual = results.get("quality_accuracy", 0.0)
-        cer = results.get("cer", 0.0)
+        """Plot a compact summary of the main global and musical metrics."""
+        main_labels = ["accuracy", "macro_f1", "weighted_f1", "root_acc", "quality_acc", "1-CER"]
+        acc = float(results.get("accuracy", 0.0))
+        macro_f1 = float(results.get("macro_f1", 0.0))
+        weighted_f1 = float(results.get("weighted_f1", 0.0))
+        root = float(results.get("root_accuracy", 0.0))
+        qual = float(results.get("quality_accuracy", 0.0))
+        cer = float(results.get("cer", 0.0))
 
-        # For plotting, invert CER so higher is better (1 - cer)
-        values = [acc, root, qual, 1.0 - cer]
+        main_values = [acc, macro_f1, weighted_f1, root, qual, 1.0 - cer]
 
-        fig, ax = plt.subplots(figsize=(6, 3))
-        bars = ax.bar(labels, values, color=["#2b8cbe", "#7bccc4", "#a6bddb", "#f03b20"])
-        ax.set_ylim(0, 1.0)
-        ax.set_ylabel("score")
-        ax.set_title("Metrics Summary (1-CER shown)")
-        for rect, v in zip(bars, values):
-            ax.text(rect.get_x() + rect.get_width() / 2.0, v + 0.02, f"{v:.3f}", ha="center", fontsize=8)
+        topk = results.get("top_k", {}) or {}
+        topk_items = []
+        for key, value in topk.items():
+            try:
+                suffix = int(str(key).split("_")[-1])
+            except Exception:
+                suffix = 0
+            topk_items.append((suffix, key, float(value)))
+        topk_items.sort(key=lambda item: item[0])
+        topk_labels = [item[1] for item in topk_items]
+        topk_values = [item[2] for item in topk_items]
+
+        has_topk = len(topk_labels) > 0
+        if has_topk:
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 5), constrained_layout=True)
+        else:
+            fig, ax1 = plt.subplots(figsize=(8, 3.5), constrained_layout=True)
+            ax2 = None
+
+        main_bars = ax1.bar(
+            main_labels,
+            main_values,
+            color=["#2b8cbe", "#4c78a8", "#72b7b2", "#7bccc4", "#a6bddb", "#f03b20"],
+        )
+        ax1.set_ylim(0, 1.0)
+        ax1.set_ylabel("score")
+        ax1.set_title("Global / musical metrics")
+        ax1.tick_params(axis="x", rotation=25)
+        for rect, v in zip(main_bars, main_values):
+            ax1.text(rect.get_x() + rect.get_width() / 2.0, v + 0.02, f"{v:.3f}", ha="center", fontsize=8)
+
+        if has_topk and ax2 is not None:
+            topk_bars = ax2.bar(topk_labels, topk_values, color="#59a14f")
+            ax2.set_ylim(0, 1.0)
+            ax2.set_ylabel("score")
+            ax2.set_title("Top-K accuracy")
+            for rect, v in zip(topk_bars, topk_values):
+                ax2.text(rect.get_x() + rect.get_width() / 2.0, v + 0.02, f"{v:.3f}", ha="center", fontsize=8)
 
         out_path = out_path or os.path.join(self.output_dir, f"metrics_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
         fig.savefig(out_path, dpi=150, bbox_inches="tight")

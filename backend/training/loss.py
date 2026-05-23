@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from tqdm.asyncio import tqdm
+from tqdm import tqdm
 from backend.logger.logger import Logger
 from backend.config import cfg_model
 
@@ -11,16 +11,39 @@ class LossFactory:
     """Klasa odpowiedzialna za produkcję zbalansowanych funkcji straty."""
 
     @staticmethod
+    def _count_labels_from_y_files(y_files: list[str], num_classes: int) -> np.ndarray:
+        """Count labels directly from saved *_y.npy files without touching spectrogram X files."""
+        class_counts = np.zeros(num_classes, dtype=np.int64)
+
+        for y_file in tqdm(y_files, desc="Liczenie klas z plików etykiet"):
+            y_data = np.load(y_file, allow_pickle=False)
+            y_arr = np.asarray(y_data, dtype=np.int64).ravel()
+            if y_arr.size == 0:
+                continue
+            counts = np.bincount(y_arr, minlength=num_classes)
+            class_counts += counts
+
+        return class_counts
+
+    @staticmethod
     def get_smoothed_weights(train_loader, num_classes: int | None = None) -> torch.Tensor:
         if num_classes is None:
             num_classes = cfg_model.NUM_CLASSES
         logger.info("Obliczanie wygładzonych wag klas (Label Smoothing)...")
-        class_counts = np.zeros(num_classes)
-        
-        # Zliczanie wystąpień klas
-        for _, labels in tqdm(train_loader, desc="Liczenie klas w danych treningowych"):
-            counts = np.bincount(labels.numpy(), minlength=num_classes)
-            class_counts += counts
+
+        dataset = getattr(train_loader, "dataset", None)
+        y_files = getattr(dataset, "y_files", None)
+
+        # Najszybsza ścieżka: licz bezpośrednio z plików etykiet, bez iterowania po DataLoaderze.
+        if y_files:
+            class_counts = LossFactory._count_labels_from_y_files(y_files, num_classes).astype(np.float64)
+        else:
+            # Fallback dla nietypowych loaderów/datasetów.
+            class_counts = np.zeros(num_classes, dtype=np.float64)
+            for _, labels in tqdm(train_loader, desc="Liczenie klas w danych treningowych"):
+                labels_np = labels.detach().cpu().numpy() if isinstance(labels, torch.Tensor) else np.asarray(labels)
+                counts = np.bincount(labels_np.astype(np.int64), minlength=num_classes)
+                class_counts += counts
         
         # Ochrona przed dzieleniem przez zero dla pustych klas
         class_counts[class_counts == 0] = 1 
@@ -62,48 +85,76 @@ class LossFactory:
         n = len(class_names)
         S = np.zeros((n, n), dtype=float)
 
+        # Normalizacja bemoli do krzyżyków
+        ENHARMONIC_MAP = {
+            'Db': 'C#', 'Eb': 'D#', 'Gb': 'F#', 'Ab': 'G#', 'Bb': 'A#'
+        }
+
         def split_chord(label: str):
             if label == 'N':
-                return ('N', 'N')
-            if label.endswith('m7'):
-                return (label[:-2], 'm7')
-            if label.endswith('7'):
-                return (label[:-1], '7')
-            if label.endswith('m'):
-                return (label[:-1], 'm')
-            return (label, 'maj')
+                return ('N', 'N', 'none')
+            
+            # Ekstrakcja rozszerzenia (siódemki)
+            extension = '7' if label.endswith('7') else 'none'
+            
+            # Usunięcie '7' z końca do analizy triady
+            base_label = label[:-1] if extension == '7' else label
+            
+            # Ekstrakcja triady i root'a
+            if base_label.endswith('m'):
+                root = base_label[:-1]
+                triad = 'm'
+            else:
+                root = base_label
+                triad = 'maj'
+                
+            # Normalizacja enharmoniczna roota
+            root = ENHARMONIC_MAP.get(root, root)
+                
+            return (root, triad, extension)
 
-        root_w = getattr(cfg_analysis, 'CHORD_SIMILARITY_ROOT_WEIGHT', 0.55)
-        qual_w = getattr(cfg_analysis, 'CHORD_SIMILARITY_QUALITY_WEIGHT', 0.30)
+        root_w = getattr(cfg_analysis, 'CHORD_SIMILARITY_ROOT_WEIGHT', 0.45)
+        triad_w = getattr(cfg_analysis, 'CHORD_SIMILARITY_QUALITY_WEIGHT', 0.30)  # Dawne 
+        ext_w = getattr(cfg_analysis, 'CHORD_SIMILARITY_EXTENSION_WEIGHT', 0.10)
         key_w = getattr(cfg_analysis, 'CHORD_SIMILARITY_KEY_WEIGHT', 0.15)
 
+        NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+
         for i, a in enumerate(class_names):
-            ra, qa = split_chord(a)
+            ra, ta, ea = split_chord(a)
             for j, b in enumerate(class_names):
-                rb, qb = split_chord(b)
+                rb, tb, eb = split_chord(b)
                 score = 0.0
-                # exact match -> 1.0
+                
                 if a == b:
                     score = 1.0
+                elif a == 'N' or b == 'N':
+                    # Jeśli jeden to N (cisza/brak akordu), a drugi nie, podobieństwo to zawsze 0
+                    score = 0.0
                 else:
                     if ra == rb:
                         score += root_w
-                    if qa == qb:
-                        score += qual_w
-                    # simple tonal distance: difference in semitones modulo 12
+                    
+                    # 1. Porównanie bazy (Triady maj/m) - Cmaj i C7 mają tę samą bazę 'maj'
+                    if ta == tb:
+                        score += triad_w
+                        
+                    # 2. Porównanie rozszerzeń (none/7)
+                    if ea == eb:
+                        score += ext_w
+                        
+                    # 3. Dystans tonalny (koło kwintowe / odległość w półtonach)
                     try:
-                        NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
                         if ra in NOTES and rb in NOTES:
                             idx_a = NOTES.index(ra)
                             idx_b = NOTES.index(rb)
                             dist = min((idx_a - idx_b) % 12, (idx_b - idx_a) % 12)
-                            # convert to similarity component in [0, key_w]
                             score += (1.0 - dist / 6.0) * key_w
                     except Exception:
                         pass
+                        
                 S[i, j] = max(0.0, min(1.0, score))
 
-        # ensure self-similarity = 1 and rows normalized (not strictly necessary)
         for i in range(n):
             if S[i, i] == 0:
                 S[i, i] = 1.0
@@ -125,7 +176,7 @@ class SoftLabelLoss(nn.Module):
         self.topk = int(topk) if topk is not None else None
         self.ce = nn.CrossEntropyLoss(weight=weight)
 
-    def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> dict:
         # hard cross-entropy
         hard_loss = self.ce(logits, targets)
 
@@ -150,4 +201,10 @@ class SoftLabelLoss(nn.Module):
         # KL divergence batch mean: sum q * (log q - log p)
         kld = (soft * (torch.log(soft + 1e-12) - logp)).sum(dim=1).mean()
 
-        return (1.0 - self.alpha) * hard_loss + self.alpha * kld
+        total_loss = (1.0 - self.alpha) * hard_loss + self.alpha * kld
+
+        return {
+            "loss": total_loss,
+            "ce_hard": hard_loss,
+            "kl_soft": kld
+        }

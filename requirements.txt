@@ -9,6 +9,7 @@ librosa
 colorlog
 optuna
 plotly
+seaborn
 
 PyQt6
 pyqt6-sip
