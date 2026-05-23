@@ -370,14 +370,13 @@ class MetricsVisualizer:
         plt.close(fig)
         return out_path
 
-    def plot_support_vs_perf(self, csv_path: str | None = None, data: Optional[list] = None, out_path: Optional[str] = None, annotate_top: int = 8, log_x: bool = True):
+    def plot_support_vs_perf(self, csv_path: str | None = None, data: Optional[list] = None, out_path: Optional[str] = None):
         """
-        Plot support vs accuracy scatter and binned summary.
-
+        Plot a dual-axis chart showing support (as bars) and accuracy (as a line).
+        Classes are sorted descending by support.
+        
         Either provide `csv_path` (CSV produced by `compute_support_vs_perf`) or `data` as list of records.
         """
-        import math
-
         # load data
         if data is None:
             if csv_path is None:
@@ -395,60 +394,45 @@ class MetricsVisualizer:
                         "mean_confidence": float(row.get("mean_confidence", float('nan'))),
                     })
 
-        supports = np.array([d["support"] for d in data], dtype=float)
-        accs = np.array([d.get("accuracy", float('nan')) for d in data], dtype=float)
-        classes = [d.get("class") for d in data]
+        # basic filter & sort descending by support
+        valid_data = [d for d in data if not np.isnan(d.get("accuracy", float('nan')))]
+        valid_data.sort(key=lambda x: x["support"], reverse=True)
 
-        # basic filter
-        valid_mask = ~np.isnan(accs)
-        supports_v = supports[valid_mask]
-        accs_v = accs[valid_mask]
-        classes_v = [classes[i] for i, v in enumerate(valid_mask) if v]
+        if not valid_data:
+            return None
 
-        fig, ax = plt.subplots(figsize=(8, 5))
-        if log_x:
-            ax.set_xscale("log")
+        classes = [str(d["class"]) for d in valid_data]
+        supports = [d["support"] for d in valid_data]
+        accs = [d["accuracy"] for d in valid_data]
 
-        ax.scatter(supports_v, accs_v, alpha=0.8, s=40)
-        ax.set_xlabel("support (log scale)" if log_x else "support")
-        ax.set_ylabel("accuracy")
-        ax.set_ylim(0.0, 1.0)
-        ax.set_title("Support vs Accuracy per class")
+        fig, ax1 = plt.subplots(figsize=(max(10, len(classes) * 0.3), 6))
 
-        # annotate top/lowest points
-        if annotate_top and len(supports_v) > 0:
-            # annotate by highest support
-            idx_sorted = np.argsort(supports_v)[-annotate_top:][::-1]
-            for i in idx_sorted:
-                ax.annotate(str(classes_v[i]), (supports_v[i], accs_v[i]), fontsize=7, xytext=(3, 3), textcoords='offset points')
+        # Oś główna (lewa) - Support jako słupki
+        color_support = '#b0c4de'  # Jasnoniebiesko-szary, stanowi dobre tło
+        ax1.bar(classes, supports, color=color_support, label='Support')
+        ax1.set_xlabel("Klasa (posortowane po support)")
+        ax1.set_ylabel("Support (liczba przykładów)", color='#4682b4')
+        ax1.tick_params(axis='y', labelcolor='#4682b4')
+        ax1.tick_params(axis='x', rotation=90, labelsize=8)
 
-        # binned summary (log bins)
-        try:
-            bins = np.unique(np.logspace(math.log10(max(1, supports_v.min())), math.log10(max(1, supports_v.max())), num=6).astype(int))
-            bins = np.concatenate(([0], bins))
-        except Exception:
-            bins = np.percentile(supports_v, [0, 20, 40, 60, 80, 100])
+        # Oś pomocnicza (prawa) - Accuracy jako linia
+        ax2 = ax1.twinx()
+        color_acc = '#d62728'  # Czerwony dla wyraźnego kontrastu
+        ax2.plot(classes, accs, color=color_acc, marker='o', linestyle='-', linewidth=2, markersize=5, label='Accuracy')
+        ax2.set_ylabel("Accuracy", color=color_acc)
+        ax2.tick_params(axis='y', labelcolor=color_acc)
+        ax2.set_ylim(0.0, 1.05)  # 1.05 daje lekki bufor na górze wykresu
 
-        bin_ids = np.digitize(supports_v, bins)
-        bin_means = []
-        bin_stds = []
-        bin_centers = []
-        for b in range(1, len(bins) + 1):
-            mask = bin_ids == b
-            if mask.sum() == 0:
-                bin_means.append(np.nan)
-                bin_stds.append(np.nan)
-                bin_centers.append(np.nan)
-            else:
-                bin_means.append(np.nanmean(accs_v[mask]))
-                bin_stds.append(np.nanstd(accs_v[mask]))
-                bin_centers.append(np.nanmean(supports_v[mask]))
+        plt.title("Support and Accuracy per class (Dual-Axis)")
 
-        # plot bin means as line
-        ax.errorbar(bin_centers, bin_means, yerr=bin_stds, fmt='-o', color='#ff7f0e')
+        # Połączenie legend z obu osi w jednej ramce
+        lines_1, labels_1 = ax1.get_legend_handles_labels()
+        lines_2, labels_2 = ax2.get_legend_handles_labels()
+        ax2.legend(lines_1 + lines_2, labels_1 + labels_2, loc='upper right')
 
-        out_path = out_path or os.path.join(self.output_dir, f"support_vs_perf_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
-        fig.savefig(out_path, dpi=150, bbox_inches='tight')
+        plt.tight_layout()
+        out_path = out_path or os.path.join(self.output_dir, f"support_vs_perf_dual_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
+        fig.savefig(out_path, dpi=150)
         plt.close(fig)
         return out_path
 

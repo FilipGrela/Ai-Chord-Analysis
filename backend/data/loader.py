@@ -11,20 +11,7 @@ from backend.config import cfg_train
 logger = Logger(__name__)
 
 class ChordDataset(Dataset):
-    """Memory-efficient dataset that loads spectrogram files on-demand.
-
-    Zamiast wczytywać wszystkie dane do RAM, ładuje każdy plik spektrogramu
-    przy dostępie do próbki. Wersja rozszerzona o opcjonalny pipeline augmentacji,
-    który działa online na spektrogramach przed zwróceniem próbki (dla train).
-    """
-
     def __init__(self, x_files: list[str], y_files: list[str], augment_pipeline=None):
-        """
-        Args:
-            x_files: lista ścieżek do plików _X.npy
-            y_files: lista ścieżek do plików _y.npy (muszą być w tej samej kolejności)
-            augment_pipeline: opcjonalny pipeline augmentacji
-        """
         if len(x_files) != len(y_files):
             raise ValueError("Liczba plików X i y musi być równa!")
         
@@ -32,9 +19,8 @@ class ChordDataset(Dataset):
         self.y_files = y_files
         self.augment_pipeline = augment_pipeline
         
-        # Pre-compute indices: dla każdego pliku wiemy, ile ma próbek
-        self.file_indices = []  # [(file_idx, sample_idx_in_file), ...]
-        self.file_lengths = []  # ile próbek w każdym pliku
+        self.file_indices = []
+        self.file_lengths = []
         
         for i, y_file in enumerate(y_files):
             try:
@@ -54,6 +40,7 @@ class ChordDataset(Dataset):
         file_idx, sample_idx = self.file_indices[idx]
         
         try:
+            # mmap_mode='r' to bezpieczny RAM cache zarządzany przez system Windows
             X_file = np.load(self.x_files[file_idx], mmap_mode='r')
             y_file = np.load(self.y_files[file_idx], mmap_mode='r')
             
@@ -64,14 +51,11 @@ class ChordDataset(Dataset):
             y = torch.tensor(y, dtype=torch.long)
             
             if self.augment_pipeline is not None:
-                try:
-                    x = self.augment_pipeline(x)
-                except Exception as e:
-                    logger.error(f"Błąd podczas augmentacji: {e}")
+                x = self.augment_pipeline(x)
             
             return x, y
         except Exception as e:
-            logger.error(f"Błąd wczytywania próbki {idx} (file {file_idx}, sample {sample_idx}): {e}")
+            logger.error(f"Błąd wczytywania próbki {idx}: {e}")
             raise
 
 class DataLoaderFactory:
@@ -119,18 +103,18 @@ class DataLoaderFactory:
             train_dataset, 
             batch_size=batch_size, 
             shuffle=True, 
-            num_workers=12, 
+            num_workers=6, 
             pin_memory=True,
-            prefetch_factor=4,
+            prefetch_factor=3,
             persistent_workers=True
         )
         val_loader = DataLoader(
             val_dataset, 
             batch_size=batch_size, 
             shuffle=False, 
-            num_workers=8, 
+            num_workers=4, 
             pin_memory=True,
-            prefetch_factor=2,
+            prefetch_factor=1,
             persistent_workers=True
         )
         

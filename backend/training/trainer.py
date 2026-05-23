@@ -189,8 +189,9 @@ class Trainer:
             val_labels_all = []
             val_probs_all = []
 
+            pbar = tqdm(self.val_loader, desc=f"Walidacja Epoki {epoch}")
             with torch.no_grad():
-                for inputs, labels in self.val_loader:
+                for step, (inputs, labels) in enumerate(pbar):
                     inputs, labels = inputs.to(self.device), labels.to(self.device)
                     outputs = self.model(inputs)
                     loss_output = self.criterion(outputs, labels)
@@ -199,12 +200,14 @@ class Trainer:
                     val_loss += loss.item()
                     ce_value = self._mean_component(loss_parts, "ce_hard")
                     kl_value = self._mean_component(loss_parts, "kl_soft")
+                    
                     if ce_value is not None:
                         val_ce += ce_value
                     if kl_value is not None:
                         val_kl += kl_value
                     if ce_value is not None or kl_value is not None:
                         val_component_batches += 1
+                        
                     probs = torch.softmax(outputs, dim=1)
                     _, predicted = torch.max(outputs.data, 1)
 
@@ -216,10 +219,16 @@ class Trainer:
                     total_val += labels.size(0)
                     correct_val += (predicted == labels).sum().item()
                     
+                    # AKTUALIZACJA PBARA:
+                    running_loss = val_loss / (step + 1)
+                    running_acc = 100.0 * correct_val / total_val
+                    pbar.set_postfix(strata=f"{running_loss:.4f}", dokladnosc=f"{running_acc:.2f}%")
+
             val_loss /= len(self.val_loader)
             val_acc = 100 * correct_val / total_val
             
             # ================= RAPORTOWANIE I STEROWANIE =================
+            logger.info(f"Epoka {epoch} zakończona. Generowanie raportu i sprawdzanie checkpointów...")
             val_ce_loss = val_ce / val_component_batches if val_component_batches else None
             val_kl_loss = val_kl / val_component_batches if val_component_batches else None
             self._log_metrics(epoch, train_loss, train_acc, val_loss, val_acc)
