@@ -234,10 +234,21 @@ class DatasetBuilder:
         if semitones == 0:
             return X, y
         
+        # Weryfikacja kształtu wejściowego: (num_sequences, seq_len, num_bins)
+        if X.ndim != 3:
+            raise ValueError(f"Oczekiwano 3 wymiarów (num_sequences, seq_len, num_bins), otrzymano {X.ndim}")
+
         X_transposed = np.empty_like(X, dtype=np.float32)
         
-        for i, patch in enumerate(X):
-            X_transposed[i] = cls._transpose_spectrogram(patch.T, semitones).T
+        try:
+            for i in range(X.shape[0]):
+                # patch ma kształt (seq_len, num_bins)
+                patch = X[i]
+                # Po transpozycji ma (num_bins, seq_len), co pasuje do _transpose_spectrogram
+                X_transposed[i] = cls._transpose_spectrogram(patch.T, semitones).T
+        except Exception as e:
+            logger.error(f"Błąd podczas iteracji transpozycji: {e}")
+            raise e
         
         # Dla etykiet: transpozycja etykiet akordów
         int_to_chord = tuple(cls.CHORD_TO_INT.keys())

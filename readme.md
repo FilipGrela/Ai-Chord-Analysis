@@ -29,18 +29,6 @@ Zaawansowany pipeline do automatycznego rozpoznawania akordów z plików audio (
    pip install -r requirements.txt
    ```
 
-> Large files note: If your repository contains large assets (images, pretrained weights, dataset files), consider using Git LFS to avoid bloating the Git history. To enable and track files with LFS:
-
-```bash
-git lfs install
-git lfs track "*.pth"
-git lfs track "out/**"
-git add .gitattributes
-git commit -m "Enable git-lfs for large artifacts"
-```
-
-Alternatively, host large binaries externally (private storage, S3, or artifact server) and reference them in the README.
-
 ## Workflow Wykonawczy
 
 Wszystkie komendy uruchamiaj z głównego folderu projektu:
@@ -90,7 +78,7 @@ Wszystkie poniższe komendy uruchamiaj z głównego folderu projektu.
 ### Przygotowanie i trening
 ```bash
 python -m backend.scripts.run_build_dataset
-python -m backend.scripts.run_transpose_offline --semitones -6 -5 -4 -3 -2 -1 1 2 3 4 5 6
+python -m backend.scripts.run_transpose_offline --semitones -4 -3 -2 -1 1 2 3 4
 python -m backend.scripts.run_training
 ```
 

@@ -105,7 +105,7 @@ class TrainConfig:
 class BuilderConfig:
     CQT_METHOD: str = 'cqt' # 'cqt' lub 'cqt_fast'
     MAX_WORKERS: int = 15  # Maksymalna liczba procesów do budowania datasetu (nie więcej niż liczba rdzeni CPU - 2)
-    SUPPORT_SEVENTHS: bool = False  # If True, include seventh chords (e.g., C7, Cm7) in VOCAB
+    SUPPORT_SEVENTHS: bool = True  # If True, include seventh chords (e.g., C7, Cm7) in VOCAB
 
 
 @dataclass
