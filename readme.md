@@ -73,8 +73,7 @@ Wszystkie komendy uruchamiaj z głównego folderu projektu:
 
 ## Źródła Danych
 * Ten projekt może korzystać z zewnętrznych repozytoriów jako źródeł danych etykiet akordów.
-* Przykładowe źródło: [KingArthur3/ChordDatabase](https://github.com/KingArthur3/ChordDatabase).
-* Repozytorium to warto podawać jako odniesienie w dokumentacji, a nie jako bezpośredni submoduł, jeśli dane są pobierane i przetwarzane ręcznie.
+* Źródło: [KingArthur3/ChordDatabase](https://github.com/KingArthur3/ChordDatabase).
 
 ## Skrypty Uruchomieniowe
 
