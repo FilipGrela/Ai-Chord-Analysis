@@ -90,22 +90,17 @@ class ChordCRNN(nn.Module):
         self.fc = nn.Linear(2 * rnn_hidden_size, num_classes)
 
     def forward(self, x, return_attention=False):
-        # 1. CNN
         x = self.cnn(x)
 
-        # 2. Reshape: (B, C, T, F) -> (B, T, C*F)
         B, C, T, F = x.size()
         x = x.transpose(1, 2).contiguous()
         x = x.view(B, T, C * F)
 
-        # 3. GRU`
-        x, _ = self.rnn(x)  # x: (B, T, 256)
+        self.rnn.flatten_parameters()
+        x, _ = self.rnn(x)
 
-        # 4. ZAMIANA: Zamiast torch.mean(x, dim=1), używamy Attention
-        # x_weighted staje się "podsumowaniem" okna o stałym rozmiarze (B, 256)
         x_weighted, attn_weights = self.attention_head(x)
 
-        # 5. Klasyfikacja
         x_out = self.dropout(x_weighted)
         logits = self.fc(x_out)
 

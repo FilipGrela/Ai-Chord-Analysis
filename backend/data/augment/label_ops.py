@@ -2,12 +2,46 @@
 Operacje na etykietach akordów dla augmentacji danych.
 """
 
+from backend.config import cfg_builder
+from backend.logger.logger import Logger
+
+logger = Logger(__name__)
+
 class ChordTranspose:
     """Klasa do transponowania etykiet akordów."""
 
     NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
     NOTES_FLAT = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B']
-    VOCAB = NOTES + [n + 'm' for n in NOTES] + ['N']
+    @staticmethod
+    def _build_vocab(support_sevenths: bool = False) -> list[str]:
+        """Buduje VOCAB na podstawie flagi SUPPORT_SEVENTHS.
+        
+        Args:
+            support_sevenths: bool - czy uwzględniać akordy septymowe (C7, Cm7)
+        
+        Returns:
+            list[str] - lista akordów w słowniku
+        """
+        NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+        if support_sevenths:
+            return (
+                NOTES 
+                + [n + 'm' for n in NOTES]
+                + [n + '7' for n in NOTES]
+                + [n + 'm7' for n in NOTES]
+                + ['N']
+            )
+        else:
+            return NOTES + [n + 'm' for n in NOTES] + ['N']
+    
+    @classmethod
+    def get_vocab(cls) -> list[str]:
+        """Zwraca VOCAB dynamicznie na podstawie konfigu SUPPORT_SEVENTHS."""
+        return cls._build_vocab(getattr(cfg_builder, "SUPPORT_SEVENTHS", False))
+    
+    # Zbuduj VOCAB dynamicznie przy ładowaniu modułu
+    VOCAB = _build_vocab(getattr(cfg_builder, "SUPPORT_SEVENTHS", False))
+
 
     @staticmethod
     def transpose_chord_label(chord: str, semitones: int) -> str:
@@ -31,13 +65,26 @@ class ChordTranspose:
         if chord == 'N':
             return 'N'
 
-        # Podziel etykietę na nutę bazową i typ akordu (major/minor)
-        if chord.endswith('m'):
-            base_note = chord[:-1]
-            is_minor = True
+        # Podziel etykietę na nutę bazową i typ akordu (major/minor/seventh)
+        suffix = ""
+        if getattr(cfg_builder, "SUPPORT_SEVENTHS", False):
+            if chord.endswith('m7'):
+                base_note = chord[:-2]
+                suffix = 'm7'
+            elif chord.endswith('7'):
+                base_note = chord[:-1]
+                suffix = '7'
+            elif chord.endswith('m'):
+                base_note = chord[:-1]
+                suffix = 'm'
+            else:
+                base_note = chord
         else:
-            base_note = chord
-            is_minor = False
+            if chord.endswith('m'):
+                base_note = chord[:-1]
+                suffix = 'm'
+            else:
+                base_note = chord
 
         # Znajdź obecny indeks nuty w słowniku
         if base_note not in ChordTranspose.NOTES:
@@ -51,7 +98,7 @@ class ChordTranspose:
         new_note = ChordTranspose.NOTES[new_idx]
 
         # Odbuduj etykietę akordu
-        return new_note + ('m' if is_minor else '')
+        return new_note + suffix
 
     @staticmethod
     def transpose_label_array(label_array: list, semitones: int) -> list:
@@ -65,5 +112,6 @@ class ChordTranspose:
         Returns:
             list[str] - lista transponowanych etykiet
         """
+        logger.info(f"Transponowanie etykiet: count={len(label_array)}, semitony={semitones}")
         return [ChordTranspose.transpose_chord_label(chord, semitones) for chord in label_array]
 

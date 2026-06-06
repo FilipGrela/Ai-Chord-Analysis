@@ -7,5 +7,10 @@ torchaudio
 scikit-learn
 librosa
 colorlog
+optuna
+plotly
+seaborn
+rapidfuzz 
+
 PyQt6
 pyqt6-sip

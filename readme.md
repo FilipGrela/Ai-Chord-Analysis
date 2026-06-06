@@ -2,6 +2,10 @@
 
 Zaawansowany pipeline do automatycznego rozpoznawania akordów z plików audio (CQT + CRNN). Zoptymalizowany pod GPU z architekrurą Blackwell.
 
+
+![App screenshot](images/app.png "Logo Title Text 1")
+
+
 ## Wymagania Systemowe
 * **Python**: 3.10 lub nowszy.
 * **FFmpeg**: Wymagany do dekodowania audio (musi być w systemowym PATH) Pobierz [tutaj](https://ffmpeg.org/download.html).
@@ -74,7 +78,7 @@ Wszystkie poniższe komendy uruchamiaj z głównego folderu projektu.
 ### Przygotowanie i trening
 ```bash
 python -m backend.scripts.run_build_dataset
-python -m backend.scripts.run_transpose_offline --semitones -6 -5 -4 -3 -2 -1 1 2 3 4 5 6
+python -m backend.scripts.run_transpose_offline --semitones -4 -3 -2 -1 1 2 3 4
 python -m backend.scripts.run_training
 ```
 

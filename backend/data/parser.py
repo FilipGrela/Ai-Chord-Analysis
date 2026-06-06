@@ -3,6 +3,11 @@ import json
 import re
 import os
 
+from backend.config import cfg_builder
+from backend.logger.logger import Logger
+
+logger = Logger(__name__)
+
 class ChordLabelParser:
     """Klasa odpowiedzialna za odczyt i normalizację etykiet akordów."""
     
@@ -29,8 +34,19 @@ class ChordLabelParser:
             
         root, quality = match.groups()
         root = cls.ENHARMONICS.get(root, root)
-        
-        if 'min' in quality or 'm' in quality and 'maj' not in quality:
+
+        support_sevenths = getattr(cfg_builder, "SUPPORT_SEVENTHS", False)
+
+        if support_sevenths:
+            # Preserve seventh chords in a compact form compatible with VOCAB.
+            # - minor seventh -> Cm7
+            # - any other seventh-ish quality -> C7
+            if '7' in quality:
+                if 'min' in quality or ('m' in quality and 'maj' not in quality):
+                    return f"{root}m7"
+                return f"{root}7"
+
+        if 'min' in quality or ('m' in quality and 'maj' not in quality):
             return f"{root}m"
         elif 'dim' in quality:
             return f"{root}m"
@@ -56,6 +72,7 @@ class ChordLabelParser:
         - Separator jest autodetektowany (przecinek, średnik, tabulator).
         - Wiersze za krótkie lub z błędem są pomijane.
         """
+        # logger.info(f"Parsowanie CSV: {file_path}")
         parsed_labels = []
         with open(file_path, 'r', encoding='utf-8') as f:
 
@@ -104,6 +121,7 @@ class ChordLabelParser:
         """
 
         # TODO: przeanalizować czy mozna użyć innych annotacji z pliku JAMS
+        # logger.info(f"Parsowanie JAMS: {file_path}")
         parsed_labels = []
 
         # Ładuje plij json
@@ -127,7 +145,7 @@ class ChordLabelParser:
         """Główny ruter rozpoznający format pliku."""
         _, ext = os.path.splitext(file_path) # Ekstrakcja rozszerzenia.
         ext = ext.lower()
-        
+
         if ext in ['.csv', '.txt']:
             return cls.parse_csv(file_path)
         elif ext == '.jams':

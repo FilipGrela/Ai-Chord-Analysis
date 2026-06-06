@@ -1,5 +1,5 @@
 from backend.logger import logger
-from backend.config import cfg_train
+from backend.config import cfg_audio, cfg_train
 import numpy as np
 import random
 from backend.data.augment.label_ops import ChordTranspose
@@ -173,6 +173,11 @@ class RandomSpecMask:
 class RandomTranspose:
     """Losowo transpozycjonuje spektrogram CQT poprzez przesunięcie danych wzdłuż osi częstotliwości."""
 
+    @staticmethod
+    def _semitones_to_bins(semitones: int) -> int:
+        bins_per_semitone = cfg_audio.BINS_PER_OCTAVE / 12
+        return int(round(semitones * bins_per_semitone))
+
     def __init__(
         self,
         prob: float = getattr(cfg_train, "AUGMENT_TRANSPOSE_PROB", 0.0),
@@ -199,7 +204,7 @@ class RandomTranspose:
         """Transpose spectral data (2D or 3D) by shifting frequency axis."""
         # spec: (T, F) or (C, T, F)
         # Przesunięcie w dziedzinie częstotliwości, ostatnia oś
-        bins_to_shift = semitones
+        bins_to_shift = self._semitones_to_bins(semitones)
 
         if spec.ndim == 2:  # (T, F)
             shifted = np.roll(spec, bins_to_shift, axis=1)
@@ -224,7 +229,7 @@ class RandomTranspose:
         """Transpose torch tensor spectral data."""
         import torch as _torch
 
-        bins_to_shift = semitones
+        bins_to_shift = self._semitones_to_bins(semitones)
 
         if spec.ndim == 2:  # (T, F)
             shifted = _torch.roll(spec, bins_to_shift, dims=1)

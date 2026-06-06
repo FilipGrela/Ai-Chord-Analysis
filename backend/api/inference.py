@@ -3,7 +3,7 @@ import numpy as np
 import os
 import re
 from pathlib import Path
-from backend.config import cfg_paths, cfg_audio
+from backend.config import cfg_paths, cfg_audio, cfg_builder
 from backend.models.crnn import ChordCRNN
 from backend.dsp.spectrograms import AudioProcessor
 from backend.logger.logger import Logger
@@ -16,8 +16,46 @@ class ChordInferenceEngine:
     """Silnik analityczny wywołujący wytrenowany model na nowych plikach audio."""
 
     NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-    VOCAB = NOTES + [n + "m" for n in NOTES] + ["N"]
-    INT_TO_CHORD = {idx: chord for idx, chord in enumerate(VOCAB)}
+    
+    @staticmethod
+    def _build_vocab(support_sevenths: bool = False) -> list[str]:
+        """Buduje VOCAB na podstawie flagi SUPPORT_SEVENTHS.
+        
+        Args:
+            support_sevenths: bool - czy uwzględniać akordy septymowe (C7, Cm7)
+        
+        Returns:
+            list[str] - lista akordów w słowniku
+        """
+        NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+        if support_sevenths:
+            return (
+                NOTES 
+                + [n + "m" for n in NOTES]
+                + [n + "7" for n in NOTES]
+                + [n + "m7" for n in NOTES]
+                + ["N"]
+            )
+        else:
+            return NOTES + [n + "m" for n in NOTES] + ["N"]
+    
+    @staticmethod
+    def _infer_support_sevenths_from_vocab_size(num_classes: int) -> bool:
+        """Wnioskuje czy model wspiera akordy septymowe na podstawie liczby klas.
+        
+        Args:
+            num_classes: int - liczba klas modelu
+        
+        Returns:
+            bool - True jeśli model ma 49 klas (z septymowymi), False jeśli 25 (bez)
+        """
+        if num_classes == 49:
+            return True
+        elif num_classes == 25:
+            return False
+        else:
+            logger.warning(f"Nieznana liczba klas: {num_classes}. Zakładam SUPPORT_SEVENTHS=False.")
+            return False
 
     @staticmethod
     def _extract_state_dict(checkpoint: dict) -> dict:
@@ -66,20 +104,52 @@ class ChordInferenceEngine:
 
         checkpoint = torch.load(load_path, map_location=self.device)
         state_dict = self._extract_state_dict(checkpoint)
+        
+        # Wczytaj konfigurację z checkpointa
+        support_sevenths = cfg_builder.SUPPORT_SEVENTHS
+        metadata = {}
         if isinstance(checkpoint, dict):
             metadata = checkpoint.get("metadata", {})
             config_snapshot = metadata.get("config", {})
             if config_snapshot:
                 logger.info(f"Checkpoint config: {config_snapshot}")
+                # Jeśli dostępna jest informacja o SUPPORT_SEVENTHS w checkpoincie, użyj jej
+                builder_config = config_snapshot.get("builder", {})
+                if "SUPPORT_SEVENTHS" in builder_config:
+                    support_sevenths = builder_config["SUPPORT_SEVENTHS"]
+        
         rnn_num_layers = self._infer_rnn_layers_from_state_dict(state_dict)
+        
+        # Wnioskuj liczę klas z rozmiaru FC warstwy
+        num_classes = None
+        for key in state_dict.keys():
+            if key.startswith("fc.weight"):
+                num_classes = state_dict[key].shape[0]
+                break
+        
+        if num_classes is None:
+            # Fallback: spróbuj wnioskować z konfigu checkpointa
+            model_config = metadata.get("config", {}).get("model", {})
+            num_classes = model_config.get("NUM_CLASSES", 25)
+            logger.warning(f"Nie mogę wnioskować num_classes z state_dict, używam: {num_classes}")
+        
+        # Wnioskuj czy jest SUPPORT_SEVENTHS na podstawie liczby klas jeśli nie mamy jawnie
+        inferred_sevenths = self._infer_support_sevenths_from_vocab_size(num_classes)
+        if inferred_sevenths and not support_sevenths:
+            logger.warning(f"Model ma {num_classes} klas (z septymowymi), ale config ma SUPPORT_SEVENTHS=False. Korygując...")
+            support_sevenths = True
+        
+        # Buduj VOCAB na podstawie wnioskowanej flagi
+        self.VOCAB = self._build_vocab(support_sevenths)
+        self.INT_TO_CHORD = {idx: chord for idx, chord in enumerate(self.VOCAB)}
+        
+        logger.info(f"Zbudowany VOCAB: {len(self.VOCAB)} akordów (SUPPORT_SEVENTHS={support_sevenths})")
+        logger.info(f"Wczytywanie modelu z {rnn_num_layers} warstwami GRU, {num_classes} klasami z pliku: {load_path}")
 
         # Inicjalizacja modelu zgodnie z architekturą zapisaną w checkpoint.
         self.model = ChordCRNN(
-            num_classes=len(self.VOCAB), rnn_num_layers=rnn_num_layers
+            num_classes=num_classes, rnn_num_layers=rnn_num_layers
         ).to(self.device)
-        logger.info(
-            f"Wczytywanie modelu z {rnn_num_layers} warstwami GRU z pliku: {load_path}"
-        )
         self.model.load_state_dict(state_dict)
         self.model.eval()  # Tryb ewaluacji (wyłącza Dropout)
 
@@ -140,6 +210,7 @@ class ChordInferenceEngine:
 
     def predict(self, audio_path: str) -> list[dict]:
         """Główna metoda dla API. Przyjmuje ścieżkę, oddaje listę JSON."""
+        logger.info(f"Predict: rozpoczynam analizę pliku {audio_path}")
         # 1. Przetworzenie audio -> CQT
         audio_data, sr = self.processor.read_audio_universal(audio_path)
         if audio_data is None:
@@ -153,6 +224,7 @@ class ChordInferenceEngine:
         event_bus.progress_updated.emit(50, "Utworzono spektrogram")
 
         # 2. Pocięcie na sekwencje
+        logger.info("Tworzę sekwencje wejściowe dla modelu (sliding windows)")
         event_bus.log_message.emit(LogLevel.INFO, "Cięcie ścieżki na sekwencje")
         X, timestamps = self._create_inference_sequences(cqt_matrix)
 

@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Any
 import torch
 
 from backend.data.augment.transforms import RandomGain
@@ -9,12 +9,16 @@ from backend.logger import logger as log
 
 
 class AugmentPipeline:
-    def __init__(self, transforms: List[object]):
+    def __init__(self, transforms: List[Any]):
         self.logger = log.Logger(__name__)
-        self.transforms = transforms
+        self.transforms = transforms  # type: List[Any]
 
     def __call__(self, spec: torch.Tensor) -> torch.Tensor:
         out = spec
+        try:
+            self.logger.info(f"Uruchamiam pipeline augmentacji z {len(self.transforms)} transformacjami")
+        except Exception:
+            pass
         for t in self.transforms:
             # wszystkie transformacje w tym pipeline używają interfejsu .apply(...)
             out = t.apply(out)
@@ -31,7 +35,7 @@ def build_train_augment_pipeline(train_cfg) -> AugmentPipeline | None:
         logger.warning("Augmentacja wyłączona.")
         return None
 
-    transforms: List[object] = []
+    transforms: List[Any] = []
     if getattr(train_cfg, "AUGMENT_GAIN_ENABLED", False):
         logger.info("Włączono augmentację: RandomGain z parametrami: ")
         logger.info(f"  - Prob: {train_cfg.AUGMENT_GAIN_PROB}")
