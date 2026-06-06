@@ -4,6 +4,8 @@ Ten folder jest przeznaczony na pliki audio oraz etykiety akordów (ang. labels)
 
 Ze względu na rozmiar plików audio (.mp3, .wav) oraz prawa autorskie, **zawartość tego folderu jest ignorowana przez system Git** (nie trafia na GitHuba).
 
+> Przykładowe zewnętrzne źródło etykiet akordów: [KingArthur3/ChordDatabase](https://github.com/KingArthur3/ChordDatabase). Możesz traktować je jako referencję do zbioru danych, a nie bezpośredni fork repozytorium.
+
 ---
 
 ##  Wymagana struktura katalogów
